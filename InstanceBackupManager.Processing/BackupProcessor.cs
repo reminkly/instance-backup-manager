@@ -6,6 +6,7 @@ using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Configuration;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Policies;
 using InstanceBackupManager.Processing.Strategies;
 using InstanceBackupManager.Processing.Utilities;
 
@@ -94,10 +95,12 @@ public sealed class BackupProcessor
     /// </summary>
     /// <param name="instance">The loaded instance to back up.</param>
     /// <param name="kind">The reason the backup is being created.</param>
+    /// <param name="displayName">The optional user-facing name requested for the backup.</param>
     /// <returns>A manifest describing the completed backup.</returns>
     public BackupManifest CreateBackup(
         InstanceContext instance,
-        BackupKind kind = BackupKind.Manual
+        BackupKind kind = BackupKind.Manual,
+        string? displayName = null
     )
     {
         ArgumentNullException.ThrowIfNull(instance);
@@ -132,6 +135,12 @@ public sealed class BackupProcessor
         Directory.CreateDirectory(instance.BackupsPath);
 
         var createdUtc = TimeProvider.GetUtcNow();
+        var normalizedDisplayName = BackupDisplayNamePolicy.CreateDisplayName(
+            kind,
+            displayName,
+            createdUtc
+        );
+
         var backupName = CreateUniqueBackupName(
             instance.BackupsPath,
             createdUtc
@@ -178,6 +187,7 @@ public sealed class BackupProcessor
             {
                 SchemaVersion = BackupStorageConstants.SupportedManifestSchemaVersion,
                 InstanceName = instance.Config.Name,
+                DisplayName = normalizedDisplayName,
                 BackupName = backupName,
                 Kind = kind,
                 CreatedUtc = createdUtc,

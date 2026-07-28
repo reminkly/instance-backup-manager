@@ -63,11 +63,17 @@ internal sealed class BackupWorkflow
         try
         {
             SystemConsole.WriteLine();
+            SystemConsole.Write("Backup name (optional): ");
+
+            var requestedDisplayName = SystemConsole.ReadLine();
+
+            SystemConsole.WriteLine();
             SystemConsole.WriteLine("Creating backup...");
 
             var manifest = BackupProcessor.CreateBackup(
                 instance,
-                BackupKind.Manual
+                BackupKind.Manual,
+                requestedDisplayName
             );
 
             var backupPath = Path.Combine(instance.BackupsPath, manifest.BackupName);
@@ -76,6 +82,7 @@ internal sealed class BackupWorkflow
 
             SystemConsole.WriteLine();
             SystemConsole.WriteLine("Backup completed successfully.");
+            SystemConsole.WriteLine($"Name:   {manifest.DisplayName}");
             SystemConsole.WriteLine($"Backup: {manifest.BackupName}");
             SystemConsole.WriteLine($"Files:  {fileCount}");
             SystemConsole.WriteLine($"Bytes:  {totalBytes}");
