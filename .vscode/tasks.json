@@ -54,6 +54,37 @@
         "panel": "dedicated",
         "clear": true
       }
+    },
+    {
+      "label": "Cut GitHub Release",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/Cut-Release.ps1",
+        "-Version",
+        "${input:releaseVersion}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "releaseVersion",
+      "type": "promptString",
+      "description": "Release version without the leading v",
+      "default": "0.1.0"
     }
   ]
 }
