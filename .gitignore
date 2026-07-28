@@ -6,8 +6,8 @@
 # Published application output
 /publish/
 
-# Runtime instance data
-**/Instances/
+# Runtime instance data at the repository root
+/Instances/
 
 # Visual Studio
 .vs/
