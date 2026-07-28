@@ -25,3 +25,6 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Packaged release artifacts
+/artifacts/
