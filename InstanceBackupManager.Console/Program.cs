@@ -1,4 +1,5 @@
 ﻿using InstanceBackupManager.Console.Commands;
+using InstanceBackupManager.Console.Logging;
 using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Processing;
@@ -19,6 +20,15 @@ internal static class Program
     /// <returns>Zero when the application exits normally; otherwise, one.</returns>
     private static int Main()
     {
+        var applicationPath = AppContext.BaseDirectory;
+        var logger = new FileApplicationLogger(
+            Path.Combine(
+                applicationPath,
+                "logs"
+            )
+        );
+
+        var configProcessor = new ConfigProcessor();
         var backupCatalog = new BackupCatalog();
         var backupProcessor = new BackupProcessor();
 
@@ -58,18 +68,36 @@ internal static class Program
             backupMaintenanceProcessor
         );
 
-        IReadOnlyCollection<IInstanceCommand> instanceCommands =
+        var validationWorkflow = new ValidationWorkflow(
+            new InstanceValidationProcessor(
+                configProcessor,
+                backupCatalog
+            )
+        );
+
+        IReadOnlyCollection<IInstanceCommand> commands =
         [
             new BackupInstanceCommand(backupWorkflow),
             new RestoreInstanceCommand(restoreWorkflow),
             new ClearInstanceCommand(clearWorkflow),
-            new ManageBackupsCommand(backupMaintenanceWorkflow)
+            new ManageBackupsCommand(backupMaintenanceWorkflow),
+            new ValidateInstanceCommand(validationWorkflow)
         ];
 
-        var instanceMenu = new InstanceMenu(instanceCommands);
+        IReadOnlyCollection<IInstanceCommand> loggedCommands = commands
+            .Select(
+                command => (IInstanceCommand)new LoggingInstanceCommandDecorator(
+                    command,
+                    logger
+                )
+            )
+            .ToList()
+            .AsReadOnly();
+
+        var instanceMenu = new InstanceMenu(loggedCommands);
 
         var application = new ConsoleApplication(
-            new ConfigProcessor(),
+            configProcessor,
             instanceMenu
         );
 
