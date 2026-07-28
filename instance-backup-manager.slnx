@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="InstanceBackupManager.Console/InstanceBackupManager.Console.csproj" />
+  <Project Path="InstanceBackupManager.Processing.Tests/InstanceBackupManager.Processing.Tests.csproj" />
+  <Project Path="InstanceBackupManager.Processing/InstanceBackupManager.Processing.csproj" />
+</Solution>

@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Publish Portable Windows App",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "publish",
+        "${workspaceFolder}/InstanceBackupManager.Console/InstanceBackupManager.Console.csproj",
+        "--configuration",
+        "Release",
+        "--runtime",
+        "win-x64",
+        "--self-contained",
+        "true",
+        "-p:PublishSingleFile=true",
+        "--output",
+        "${workspaceFolder}/publish"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Remove Unused Usings",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "format",
+        "style",
+        "${workspaceFolder}/instance-backup-manager.slnx",
+        "--diagnostics",
+        "IDE0005",
+        "--severity",
+        "info"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}

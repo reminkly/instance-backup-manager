@@ -1,0 +1,27 @@
+# .NET build output
+**/bin/
+**/obj/
+**/TestResults/
+
+# Published application output
+/publish/
+
+# Runtime instance data
+**/Instances/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# JetBrains IDEs
+.idea/
+*.sln.iml
+
+# Visual Studio Code local state
+.vscode/*.log
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
