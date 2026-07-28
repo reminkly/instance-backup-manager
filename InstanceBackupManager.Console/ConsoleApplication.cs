@@ -1,6 +1,8 @@
+using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
+using InstanceBackupManager.Processing.Constants;
 using InstanceBackupManager.Processing.Models.Instances;
 using SystemConsole = System.Console;
 
@@ -60,7 +62,10 @@ internal sealed class ConsoleApplication
         try
         {
             var applicationPath = AppContext.BaseDirectory;
-            var instancesPath = Path.Combine(applicationPath, "Instances");
+            var instancesPath = Path.Combine(
+                applicationPath,
+                BackupStorageConstants.InstancesDirectoryName
+            );
 
             while (true)
             {
@@ -145,7 +150,7 @@ internal sealed class ConsoleApplication
 
             SystemConsole.WriteLine("0. Exit");
             SystemConsole.WriteLine();
-            SystemConsole.Write("Selection: ");
+            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
 
             var input = SystemConsole.ReadLine();
 

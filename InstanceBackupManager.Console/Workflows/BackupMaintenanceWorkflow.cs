@@ -1,5 +1,7 @@
+using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
+using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
@@ -15,9 +17,9 @@ internal sealed class BackupMaintenanceWorkflow
     #region Properties
 
     /// <summary>
-    /// Gets the processor used to discover completed backups.
+    /// Gets the catalog used to discover completed backups available for maintenance.
     /// </summary>
-    private RestoreProcessor RestoreProcessor { get; }
+    private BackupCatalog BackupCatalog { get; }
 
     /// <summary>
     /// Gets the processor used to delete validated completed backups.
@@ -31,20 +33,20 @@ internal sealed class BackupMaintenanceWorkflow
     /// <summary>
     /// Initializes a new backup-maintenance workflow.
     /// </summary>
-    /// <param name="restoreProcessor">The processor used to discover completed backups.</param>
+    /// <param name="backupCatalog">The catalog used to discover completed backups available for maintenance.</param>
     /// <param name="backupMaintenanceProcessor">The processor used to delete completed backups.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="restoreProcessor"/> or <paramref name="backupMaintenanceProcessor"/> is null.
+    /// Thrown when <paramref name="backupCatalog"/> or <paramref name="backupMaintenanceProcessor"/> is null.
     /// </exception>
     internal BackupMaintenanceWorkflow(
-        RestoreProcessor restoreProcessor,
+        BackupCatalog backupCatalog,
         BackupMaintenanceProcessor backupMaintenanceProcessor
     )
     {
-        ArgumentNullException.ThrowIfNull(restoreProcessor);
+        ArgumentNullException.ThrowIfNull(backupCatalog);
         ArgumentNullException.ThrowIfNull(backupMaintenanceProcessor);
 
-        RestoreProcessor = restoreProcessor;
+        BackupCatalog = backupCatalog;
         BackupMaintenanceProcessor = backupMaintenanceProcessor;
     }
 
@@ -73,7 +75,7 @@ internal sealed class BackupMaintenanceWorkflow
                 SystemConsole.WriteLine("2. Delete all backups");
                 SystemConsole.WriteLine("0. Return");
                 SystemConsole.WriteLine();
-                SystemConsole.Write("Selection: ");
+                SystemConsole.Write(ConsoleMessages.SelectionPrompt);
 
                 var input = SystemConsole.ReadLine();
 
@@ -186,7 +188,7 @@ internal sealed class BackupMaintenanceWorkflow
 
             SystemConsole.WriteLine("0. Return");
             SystemConsole.WriteLine();
-            SystemConsole.Write("Selection: ");
+            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
 
             var input = SystemConsole.ReadLine();
 
@@ -356,7 +358,7 @@ internal sealed class BackupMaintenanceWorkflow
     /// <returns>A list of completed backups ordered from newest to oldest.</returns>
     private IReadOnlyList<BackupDescriptor> DiscoverBackups(InstanceContext instance)
     {
-        return RestoreProcessor
+        return BackupCatalog
             .DiscoverBackups(instance)
             .ToList();
     }
@@ -397,8 +399,8 @@ internal sealed class BackupMaintenanceWorkflow
     {
         return kind switch
         {
-            BackupKind.Manual => "Manual",
-            BackupKind.PreRestore => "Pre-restore",
+            BackupKind.Manual => ConsoleMessages.ManualBackupKind,
+            BackupKind.PreRestore => ConsoleMessages.PreRestoreBackupKind,
             _ => kind.ToString()
         };
     }
@@ -409,7 +411,7 @@ internal sealed class BackupMaintenanceWorkflow
     private static void ShowNoBackupsMessage()
     {
         SystemConsole.WriteLine();
-        SystemConsole.WriteLine("No completed backups are available for this instance.");
+        SystemConsole.WriteLine(ConsoleMessages.NoCompletedBackups);
 
         ConsoleHelper.WaitForContinue();
     }

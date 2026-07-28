@@ -1,6 +1,8 @@
-﻿using InstanceBackupManager.Console.Menus;
+﻿using InstanceBackupManager.Console.Commands;
+using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Processing;
+using InstanceBackupManager.Processing.Catalogs;
 
 namespace InstanceBackupManager.Console;
 
@@ -17,16 +19,21 @@ internal static class Program
     /// <returns>Zero when the application exits normally; otherwise, one.</returns>
     private static int Main()
     {
+        var backupCatalog = new BackupCatalog();
         var backupProcessor = new BackupProcessor();
-        var restoreProcessor = new RestoreProcessor();
+
+        var restoreProcessor = new RestoreProcessor(
+            backupCatalog,
+            TimeProvider.System
+        );
 
         var backupMaintenanceProcessor = new BackupMaintenanceProcessor(
-            restoreProcessor,
+            backupCatalog,
             TimeProvider.System
         );
 
         var backupRetentionProcessor = new BackupRetentionProcessor(
-            restoreProcessor,
+            backupCatalog,
             backupMaintenanceProcessor
         );
 
@@ -36,6 +43,7 @@ internal static class Program
         );
 
         var restoreWorkflow = new RestoreWorkflow(
+            backupCatalog,
             restoreProcessor,
             backupProcessor,
             backupRetentionProcessor
@@ -46,16 +54,19 @@ internal static class Program
         );
 
         var backupMaintenanceWorkflow = new BackupMaintenanceWorkflow(
-            restoreProcessor,
+            backupCatalog,
             backupMaintenanceProcessor
         );
 
-        var instanceMenu = new InstanceMenu(
-            backupWorkflow,
-            restoreWorkflow,
-            clearWorkflow,
-            backupMaintenanceWorkflow
-        );
+        IReadOnlyCollection<IInstanceCommand> instanceCommands =
+        [
+            new BackupInstanceCommand(backupWorkflow),
+            new RestoreInstanceCommand(restoreWorkflow),
+            new ClearInstanceCommand(clearWorkflow),
+            new ManageBackupsCommand(backupMaintenanceWorkflow)
+        ];
+
+        var instanceMenu = new InstanceMenu(instanceCommands);
 
         var application = new ConsoleApplication(
             new ConfigProcessor(),

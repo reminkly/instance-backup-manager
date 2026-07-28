@@ -1,6 +1,8 @@
+using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.BackupMaintenance;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Utilities;
 
 namespace InstanceBackupManager.Processing;
 
@@ -12,9 +14,9 @@ public sealed class BackupRetentionProcessor
     #region Properties
 
     /// <summary>
-    /// Gets the processor used to discover completed backups.
+    /// Gets the catalog used to discover completed backups.
     /// </summary>
-    private RestoreProcessor RestoreProcessor { get; }
+    private BackupCatalog BackupCatalog { get; }
 
     /// <summary>
     /// Gets the processor used to batch-delete completed backups that exceed a retention limit.
@@ -30,21 +32,21 @@ public sealed class BackupRetentionProcessor
     /// </summary>
     public BackupRetentionProcessor()
         : this(
-            new RestoreProcessor()
+            new BackupCatalog()
         )
     {
     }
 
     /// <summary>
-    /// Initializes a new backup-retention processor using the specified restore processor.
+    /// Initializes a new backup-retention processor using the specified backup catalog.
     /// </summary>
-    /// <param name="restoreProcessor">The processor used to discover completed backups.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="restoreProcessor"/> is null.</exception>
-    public BackupRetentionProcessor(RestoreProcessor restoreProcessor)
+    /// <param name="backupCatalog">The catalog used to discover completed backups.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="backupCatalog"/> is null.</exception>
+    public BackupRetentionProcessor(BackupCatalog backupCatalog)
         : this(
-            restoreProcessor,
+            backupCatalog,
             new BackupMaintenanceProcessor(
-                restoreProcessor,
+                backupCatalog,
                 TimeProvider.System
             )
         )
@@ -54,20 +56,20 @@ public sealed class BackupRetentionProcessor
     /// <summary>
     /// Initializes a new backup-retention processor using the specified processing dependencies.
     /// </summary>
-    /// <param name="restoreProcessor">The processor used to discover completed backups.</param>
+    /// <param name="backupCatalog">The catalog used to discover completed backups.</param>
     /// <param name="backupMaintenanceProcessor">The processor used to delete backups that exceed a retention limit.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="restoreProcessor"/> or <paramref name="backupMaintenanceProcessor"/> is null.
+    /// Thrown when <paramref name="backupCatalog"/> or <paramref name="backupMaintenanceProcessor"/> is null.
     /// </exception>
     public BackupRetentionProcessor(
-        RestoreProcessor restoreProcessor,
+        BackupCatalog backupCatalog,
         BackupMaintenanceProcessor backupMaintenanceProcessor
     )
     {
-        ArgumentNullException.ThrowIfNull(restoreProcessor);
+        ArgumentNullException.ThrowIfNull(backupCatalog);
         ArgumentNullException.ThrowIfNull(backupMaintenanceProcessor);
 
-        RestoreProcessor = restoreProcessor;
+        BackupCatalog = backupCatalog;
         BackupMaintenanceProcessor = backupMaintenanceProcessor;
     }
 
@@ -117,13 +119,13 @@ public sealed class BackupRetentionProcessor
             );
         }
 
-        var backupNamesToDelete = RestoreProcessor
+        var backupNamesToDelete = BackupCatalog
             .DiscoverBackups(instance)
             .Where(backup => backup.Manifest.Kind == kind)
             .OrderByDescending(backup => backup.Manifest.CreatedUtc)
             .ThenByDescending(
                 backup => backup.BackupName,
-                GetPathComparer()
+                FileSystemSafety.GetPathComparer()
             )
             .Skip(retentionLimit.Value)
             .Select(backup => backup.BackupName)
@@ -168,21 +170,6 @@ public sealed class BackupRetentionProcessor
                 "The backup kind is not supported."
             )
         };
-    }
-
-    #endregion
-
-    #region Path Behavior
-
-    /// <summary>
-    /// Gets the appropriate path comparer for deterministic backup-name ordering.
-    /// </summary>
-    /// <returns>A case-insensitive comparer on Windows and a case-sensitive comparer on other operating systems.</returns>
-    private static StringComparer GetPathComparer()
-    {
-        return OperatingSystem.IsWindows()
-            ? StringComparer.OrdinalIgnoreCase
-            : StringComparer.Ordinal;
     }
 
     #endregion

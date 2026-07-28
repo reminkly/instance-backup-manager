@@ -1,65 +1,64 @@
+using InstanceBackupManager.Console.Commands;
+using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Console.Utilities;
-using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Processing.Models.Instances;
 using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Menus;
 
 /// <summary>
-/// Displays and dispatches the operations available for a configured instance.
+/// Displays and dispatches registered commands for a configured instance.
 /// </summary>
 internal sealed class InstanceMenu
 {
     #region Properties
 
     /// <summary>
-    /// Gets the workflow used to create backups.
+    /// Gets the commands available through the configured-instance menu.
     /// </summary>
-    private BackupWorkflow BackupWorkflow { get; }
-
-    /// <summary>
-    /// Gets the workflow used to restore completed backups.
-    /// </summary>
-    private RestoreWorkflow RestoreWorkflow { get; }
-
-    /// <summary>
-    /// Gets the workflow used to clear configured instance data.
-    /// </summary>
-    private ClearWorkflow ClearWorkflow { get; }
-
-    /// <summary>
-    /// Gets the workflow used to delete completed backups.
-    /// </summary>
-    private BackupMaintenanceWorkflow BackupMaintenanceWorkflow { get; }
+    private IReadOnlyList<IInstanceCommand> Commands { get; }
 
     #endregion
 
     #region Constructors
 
     /// <summary>
-    /// Initializes a new instance menu.
+    /// Initializes a new instance menu using the supplied commands.
     /// </summary>
-    /// <param name="backupWorkflow">The workflow used to create backups.</param>
-    /// <param name="restoreWorkflow">The workflow used to restore completed backups.</param>
-    /// <param name="clearWorkflow">The workflow used to clear configured instance data.</param>
-    /// <param name="backupMaintenanceWorkflow">The workflow used to delete completed backups.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any supplied workflow is null.</exception>
-    internal InstanceMenu(
-        BackupWorkflow backupWorkflow,
-        RestoreWorkflow restoreWorkflow,
-        ClearWorkflow clearWorkflow,
-        BackupMaintenanceWorkflow backupMaintenanceWorkflow
-    )
+    /// <param name="commands">The commands that can be displayed and executed by the menu.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="commands"/> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when no commands are supplied or command selections are duplicated.</exception>
+    internal InstanceMenu(IReadOnlyCollection<IInstanceCommand> commands)
     {
-        ArgumentNullException.ThrowIfNull(backupWorkflow);
-        ArgumentNullException.ThrowIfNull(restoreWorkflow);
-        ArgumentNullException.ThrowIfNull(clearWorkflow);
-        ArgumentNullException.ThrowIfNull(backupMaintenanceWorkflow);
+        ArgumentNullException.ThrowIfNull(commands);
 
-        BackupWorkflow = backupWorkflow;
-        RestoreWorkflow = restoreWorkflow;
-        ClearWorkflow = clearWorkflow;
-        BackupMaintenanceWorkflow = backupMaintenanceWorkflow;
+        if (commands.Count == 0)
+        {
+            throw new ArgumentException(
+                "At least one instance command must be registered.",
+                nameof(commands)
+            );
+        }
+
+        var duplicateSelection = commands
+            .GroupBy(
+                command => command.Selection,
+                StringComparer.OrdinalIgnoreCase
+            )
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicateSelection is not null)
+        {
+            throw new ArgumentException(
+                $"Instance command selection '{duplicateSelection.Key}' is registered more than once.",
+                nameof(commands)
+            );
+        }
+
+        Commands = commands
+            .OrderBy(command => command.Selection, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+            .AsReadOnly();
     }
 
     #endregion
@@ -67,36 +66,24 @@ internal sealed class InstanceMenu
     #region Internal Methods
 
     /// <summary>
-    /// Displays the available operations for a configured instance and returns to instance selection when the user exits the menu.
+    /// Displays available commands and returns to instance selection when requested.
     /// </summary>
     /// <param name="instance">The loaded instance selected by the user.</param>
-    /// <returns>Zero when the user returns to instance selection; otherwise, the nonzero result returned by a failed workflow.</returns>
+    /// <returns>Zero when the user returns normally; otherwise, the nonzero result returned by a failed command.</returns>
     internal int Run(InstanceContext instance)
     {
         ArgumentNullException.ThrowIfNull(instance);
 
-        var canClear = instance.Config.Targets.Any(
-            target => target.Enabled && target.AllowClear
-        );
-
         while (true)
         {
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine(instance.Config.Name);
-            SystemConsole.WriteLine(new string('=', instance.Config.Name.Length));
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("1. Back up now");
-            SystemConsole.WriteLine("2. Restore from backup");
+            var availableCommands = Commands
+                .Where(command => command.IsAvailable(instance))
+                .ToList();
 
-            if (canClear)
-            {
-                SystemConsole.WriteLine("3. Clear instance data");
-            }
-
-            SystemConsole.WriteLine("4. Manage backups");
-            SystemConsole.WriteLine("0. Return to instances");
-            SystemConsole.WriteLine();
-            SystemConsole.Write("Selection: ");
+            DisplayMenu(
+                instance,
+                availableCommands
+            );
 
             var input = SystemConsole.ReadLine();
 
@@ -105,17 +92,30 @@ internal sealed class InstanceMenu
                 return 0;
             }
 
-            var result = input.Trim() switch
-            {
-                "0" => 0,
-                "1" => BackupWorkflow.Run(instance),
-                "2" => RestoreWorkflow.Run(instance),
-                "3" when canClear => ClearWorkflow.Run(instance),
-                "4" => BackupMaintenanceWorkflow.Run(instance),
-                _ => ShowInvalidSelection()
-            };
+            var selection = input.Trim();
 
-            if (input.Trim() == "0" || result != 0)
+            if (selection == "0")
+            {
+                return 0;
+            }
+
+            var selectedCommand = availableCommands.SingleOrDefault(
+                command => string.Equals(
+                    command.Selection,
+                    selection,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
+
+            if (selectedCommand is null)
+            {
+                ConsoleHelper.ShowInvalidSelectionMessage();
+                continue;
+            }
+
+            var result = selectedCommand.Execute(instance);
+
+            if (result != 0)
             {
                 return result;
             }
@@ -124,17 +124,31 @@ internal sealed class InstanceMenu
 
     #endregion
 
-    #region Menu Helpers
+    #region Display Helpers
 
     /// <summary>
-    /// Displays the invalid-selection message and returns a successful result so the instance menu remains active.
+    /// Displays the instance heading and commands currently available for execution.
     /// </summary>
-    /// <returns>Zero so the menu continues displaying.</returns>
-    private static int ShowInvalidSelection()
+    /// <param name="instance">The selected instance.</param>
+    /// <param name="commands">The commands available for the selected instance.</param>
+    private static void DisplayMenu(
+        InstanceContext instance,
+        IReadOnlyCollection<IInstanceCommand> commands
+    )
     {
-        ConsoleHelper.ShowInvalidSelectionMessage();
+        SystemConsole.WriteLine();
+        SystemConsole.WriteLine(instance.Config.Name);
+        SystemConsole.WriteLine(new string('=', instance.Config.Name.Length));
+        SystemConsole.WriteLine();
 
-        return 0;
+        foreach (var command in commands)
+        {
+            SystemConsole.WriteLine($"{command.Selection}. {command.Description}");
+        }
+
+        SystemConsole.WriteLine("0. Return to instances");
+        SystemConsole.WriteLine();
+        SystemConsole.Write(ConsoleMessages.SelectionPrompt);
     }
 
     #endregion

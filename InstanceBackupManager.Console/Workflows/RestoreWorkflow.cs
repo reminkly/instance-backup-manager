@@ -1,5 +1,7 @@
+using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
+using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
@@ -15,7 +17,12 @@ internal sealed class RestoreWorkflow
     #region Properties
 
     /// <summary>
-    /// Gets the processor used to discover and restore completed backups.
+    /// Gets the catalog used to discover completed backups available for restoration.
+    /// </summary>
+    private BackupCatalog BackupCatalog { get; }
+
+    /// <summary>
+    /// Gets the processor used to restore completed backups.
     /// </summary>
     private RestoreProcessor RestoreProcessor { get; }
 
@@ -36,20 +43,24 @@ internal sealed class RestoreWorkflow
     /// <summary>
     /// Initializes a new restore workflow.
     /// </summary>
-    /// <param name="restoreProcessor">The processor used to discover and restore completed backups.</param>
+    /// <param name="backupCatalog">The catalog used to discover completed backups available for restoration.</param>
+    /// <param name="restoreProcessor">The processor used to restore completed backups.</param>
     /// <param name="backupProcessor">The processor used to create an optional pre-restore backup.</param>
     /// <param name="backupRetentionProcessor">The processor used to apply configured pre-restore retention.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any supplied processor is null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when any supplied dependency is null.</exception>
     internal RestoreWorkflow(
+        BackupCatalog backupCatalog,
         RestoreProcessor restoreProcessor,
         BackupProcessor backupProcessor,
         BackupRetentionProcessor backupRetentionProcessor
     )
     {
+        ArgumentNullException.ThrowIfNull(backupCatalog);
         ArgumentNullException.ThrowIfNull(restoreProcessor);
         ArgumentNullException.ThrowIfNull(backupProcessor);
         ArgumentNullException.ThrowIfNull(backupRetentionProcessor);
 
+        BackupCatalog = backupCatalog;
         RestoreProcessor = restoreProcessor;
         BackupProcessor = backupProcessor;
         BackupRetentionProcessor = backupRetentionProcessor;
@@ -70,14 +81,14 @@ internal sealed class RestoreWorkflow
 
         try
         {
-            var backups = RestoreProcessor
+            var backups = BackupCatalog
                 .DiscoverBackups(instance)
                 .ToList();
 
             if (backups.Count == 0)
             {
                 SystemConsole.WriteLine();
-                SystemConsole.WriteLine("No completed backups are available for this instance.");
+                SystemConsole.WriteLine(ConsoleMessages.NoCompletedBackups);
 
                 ConsoleHelper.WaitForContinue();
 
@@ -195,7 +206,7 @@ internal sealed class RestoreWorkflow
 
             SystemConsole.WriteLine("0. Exit");
             SystemConsole.WriteLine();
-            SystemConsole.Write("Selection: ");
+            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
 
             var input = SystemConsole.ReadLine();
 
@@ -387,8 +398,8 @@ internal sealed class RestoreWorkflow
     {
         return kind switch
         {
-            BackupKind.Manual => "Manual",
-            BackupKind.PreRestore => "Pre-restore",
+            BackupKind.Manual => ConsoleMessages.ManualBackupKind,
+            BackupKind.PreRestore => ConsoleMessages.PreRestoreBackupKind,
             _ => kind.ToString()
         };
     }

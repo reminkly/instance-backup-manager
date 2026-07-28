@@ -1,6 +1,8 @@
+using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Models.BackupMaintenance;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Utilities;
 
 namespace InstanceBackupManager.Processing;
 
@@ -12,9 +14,9 @@ public sealed class BackupMaintenanceProcessor
     #region Properties
 
     /// <summary>
-    /// Gets the processor used to discover and validate completed backups.
+    /// Gets the catalog used to discover and validate completed backups.
     /// </summary>
-    private RestoreProcessor RestoreProcessor { get; }
+    private BackupCatalog BackupCatalog { get; }
 
     /// <summary>
     /// Gets the time provider used to determine when deletion operations complete.
@@ -26,33 +28,33 @@ public sealed class BackupMaintenanceProcessor
     #region Constructors
 
     /// <summary>
-    /// Initializes a new backup-maintenance processor using default processors and the system time provider.
+    /// Initializes a new backup-maintenance processor using the default backup catalog and system time provider.
     /// </summary>
     public BackupMaintenanceProcessor()
         : this(
-            new RestoreProcessor(),
+            new BackupCatalog(),
             TimeProvider.System
         )
     {
     }
 
     /// <summary>
-    /// Initializes a new backup-maintenance processor using the specified restore processor and time provider.
+    /// Initializes a new backup-maintenance processor using the specified backup catalog and time provider.
     /// </summary>
-    /// <param name="restoreProcessor">The processor used to discover and validate completed backups.</param>
+    /// <param name="backupCatalog">The catalog used to discover and validate completed backups.</param>
     /// <param name="timeProvider">The time provider used when assigning deletion completion timestamps.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="restoreProcessor"/> or <paramref name="timeProvider"/> is null.
+    /// Thrown when <paramref name="backupCatalog"/> or <paramref name="timeProvider"/> is null.
     /// </exception>
     public BackupMaintenanceProcessor(
-        RestoreProcessor restoreProcessor,
+        BackupCatalog backupCatalog,
         TimeProvider timeProvider
     )
     {
-        ArgumentNullException.ThrowIfNull(restoreProcessor);
+        ArgumentNullException.ThrowIfNull(backupCatalog);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
-        RestoreProcessor = restoreProcessor;
+        BackupCatalog = backupCatalog;
         TimeProvider = timeProvider;
     }
 
@@ -104,7 +106,7 @@ public sealed class BackupMaintenanceProcessor
             return CreateResult([]);
         }
 
-        var discoveredBackups = RestoreProcessor
+        var discoveredBackups = BackupCatalog
             .DiscoverBackups(instance)
             .ToList();
 
@@ -116,7 +118,7 @@ public sealed class BackupMaintenanceProcessor
                 backup => string.Equals(
                     backup.BackupName,
                     backupName,
-                    GetPathComparison()
+                    FileSystemSafety.GetPathComparison()
                 )
             );
 
@@ -149,7 +151,7 @@ public sealed class BackupMaintenanceProcessor
     {
         ArgumentNullException.ThrowIfNull(instance);
 
-        var backups = RestoreProcessor
+        var backups = BackupCatalog
             .DiscoverBackups(instance)
             .ToList();
 
@@ -170,7 +172,7 @@ public sealed class BackupMaintenanceProcessor
     private static void ValidateRequestedBackupNames(IReadOnlyCollection<string> backupNames)
     {
         var encounteredNames = new HashSet<string>(
-            GetPathComparer()
+            FileSystemSafety.GetPathComparer()
         );
 
         foreach (var backupName in backupNames)
@@ -275,7 +277,11 @@ public sealed class BackupMaintenanceProcessor
 
         var parentPath = Directory.GetParent(normalizedBackupPath)?.FullName;
 
-        if (string.IsNullOrWhiteSpace(parentPath) || !PathsEqual(parentPath, normalizedBackupsPath))
+        if (string.IsNullOrWhiteSpace(parentPath)
+            || !FileSystemSafety.PathsEqual(
+                parentPath,
+                normalizedBackupsPath
+            ))
         {
             throw new InvalidDataException(
                 $"Backup '{backup.BackupName}' is not a direct child of the instance backups directory."
@@ -289,7 +295,7 @@ public sealed class BackupMaintenanceProcessor
             );
         }
 
-        ThrowIfReparsePoint(
+        FileSystemSafety.ThrowIfReparsePoint(
             new DirectoryInfo(normalizedBackupPath)
         );
     }
@@ -305,14 +311,14 @@ public sealed class BackupMaintenanceProcessor
     /// <returns>The number of files and combined bytes contained by the directory.</returns>
     private static BackupDirectoryStatistics InspectBackupDirectory(DirectoryInfo directory)
     {
-        ThrowIfReparsePoint(directory);
+        FileSystemSafety.ThrowIfReparsePoint(directory);
 
         long fileCount = 0;
         long totalBytes = 0;
 
         foreach (var file in directory.EnumerateFiles())
         {
-            ThrowIfReparsePoint(file);
+            FileSystemSafety.ThrowIfReparsePoint(file);
 
             fileCount++;
             totalBytes += file.Length;
@@ -375,64 +381,6 @@ public sealed class BackupMaintenanceProcessor
             CompletedUtc = TimeProvider.GetUtcNow(),
             Entries = resultEntries
         };
-    }
-
-    #endregion
-
-    #region Path Safety
-
-    /// <summary>
-    /// Determines whether two filesystem paths refer to the same location.
-    /// </summary>
-    /// <param name="firstPath">The first absolute path.</param>
-    /// <param name="secondPath">The second absolute path.</param>
-    /// <returns><see langword="true"/> when the paths are equal; otherwise, <see langword="false"/>.</returns>
-    private static bool PathsEqual(
-        string firstPath,
-        string secondPath
-    )
-    {
-        return string.Equals(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(firstPath)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(secondPath)),
-            GetPathComparison()
-        );
-    }
-
-    /// <summary>
-    /// Throws an exception when a filesystem entry is a symbolic link, junction, or another reparse-point type.
-    /// </summary>
-    /// <param name="entry">The filesystem entry to inspect.</param>
-    private static void ThrowIfReparsePoint(FileSystemInfo entry)
-    {
-        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new IOException(
-                $"Symbolic links and junctions cannot be deleted through backup maintenance: '{entry.FullName}'."
-            );
-        }
-    }
-
-    /// <summary>
-    /// Gets the appropriate path comparer for the current operating system.
-    /// </summary>
-    /// <returns>A case-insensitive comparer on Windows and a case-sensitive comparer on other operating systems.</returns>
-    private static StringComparer GetPathComparer()
-    {
-        return OperatingSystem.IsWindows()
-            ? StringComparer.OrdinalIgnoreCase
-            : StringComparer.Ordinal;
-    }
-
-    /// <summary>
-    /// Gets the appropriate path-comparison behavior for the current operating system.
-    /// </summary>
-    /// <returns>A case-insensitive comparison on Windows and a case-sensitive comparison on other operating systems.</returns>
-    private static StringComparison GetPathComparison()
-    {
-        return OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
     }
 
     #endregion

@@ -1,27 +1,27 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InstanceBackupManager.Processing.Constants;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Configuration;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Strategies;
 using InstanceBackupManager.Processing.Utilities;
 
 namespace InstanceBackupManager.Processing;
 
 /// <summary>
-/// Creates complete, timestamped backups for loaded instances.
+/// Coordinates creation of complete, timestamped backups for loaded instances.
 /// </summary>
 public sealed class BackupProcessor
 {
-    #region Constants
-
-    private const string ManifestFileName = "manifest.json";
-    private const int ManifestSchemaVersion = 1;
-
-    #endregion
-
     #region Properties
+
+    /// <summary>
+    /// Gets the strategies used to back up configured target types.
+    /// </summary>
+    private IReadOnlyCollection<IBackupTargetStrategy> BackupStrategies { get; }
 
     /// <summary>
     /// Gets the time provider used to determine when backups are created.
@@ -45,7 +45,7 @@ public sealed class BackupProcessor
     #region Constructors
 
     /// <summary>
-    /// Initializes a new backup processor using the system time provider.
+    /// Initializes a new backup processor using the default strategies and system time provider.
     /// </summary>
     public BackupProcessor()
         : this(TimeProvider.System)
@@ -53,15 +53,36 @@ public sealed class BackupProcessor
     }
 
     /// <summary>
-    /// Initializes a new backup processor using the specified time provider.
+    /// Initializes a new backup processor using the default strategies and specified time provider.
     /// </summary>
     /// <param name="timeProvider">The time provider used when assigning backup timestamps.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="timeProvider"/> is null.</exception>
     public BackupProcessor(TimeProvider timeProvider)
+        : this(
+            timeProvider,
+            CreateDefaultStrategies()
+        )
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new backup processor using the specified time provider and strategies.
+    /// </summary>
+    /// <param name="timeProvider">The time provider used when assigning backup timestamps.</param>
+    /// <param name="backupStrategies">The strategies used to back up configured target types.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="timeProvider"/> or <paramref name="backupStrategies"/> is null.
+    /// </exception>
+    internal BackupProcessor(
+        TimeProvider timeProvider,
+        IReadOnlyCollection<IBackupTargetStrategy> backupStrategies
+    )
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(backupStrategies);
 
         TimeProvider = timeProvider;
+        BackupStrategies = backupStrategies;
     }
 
     #endregion
@@ -74,25 +95,11 @@ public sealed class BackupProcessor
     /// <param name="instance">The loaded instance to back up.</param>
     /// <param name="kind">The reason the backup is being created.</param>
     /// <returns>A manifest describing the completed backup.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="instance"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the instance is disabled, contains no enabled targets, or contains an unsupported target type.
-    /// </exception>
-    /// <exception cref="FileNotFoundException">Thrown when a configured file target does not exist.</exception>
-    /// <exception cref="DirectoryNotFoundException">Thrown when a configured directory target does not exist.</exception>
-    /// <exception cref="IOException">
-    /// Thrown when a filesystem error prevents the backup from being created or a symbolic link is encountered.
-    /// </exception>
-    /// <exception cref="UnauthorizedAccessException">
-    /// Thrown when the application does not have permission to read a source or write the backup.
-    /// </exception>
     public BackupManifest CreateBackup(
-        InstanceContext instance, 
+        InstanceContext instance,
         BackupKind kind = BackupKind.Manual
     )
     {
-        ArgumentNullException.ThrowIfNull(instance);
-
         ArgumentNullException.ThrowIfNull(instance);
 
         if (!Enum.IsDefined(kind))
@@ -106,7 +113,9 @@ public sealed class BackupProcessor
 
         if (!instance.Config.Enabled)
         {
-            throw new InvalidOperationException($"Instance '{instance.Config.Name}' is disabled.");
+            throw new InvalidOperationException(
+                $"Instance '{instance.Config.Name}' is disabled."
+            );
         }
 
         var enabledTargets = instance.Config.Targets
@@ -123,9 +132,20 @@ public sealed class BackupProcessor
         Directory.CreateDirectory(instance.BackupsPath);
 
         var createdUtc = TimeProvider.GetUtcNow();
-        var backupName = CreateUniqueBackupName(instance.BackupsPath, createdUtc);
-        var completedBackupPath = Path.Combine(instance.BackupsPath, backupName);
-        var temporaryBackupPath = Path.Combine(instance.BackupsPath, $".in-progress-{Guid.NewGuid():N}");
+        var backupName = CreateUniqueBackupName(
+            instance.BackupsPath,
+            createdUtc
+        );
+
+        var completedBackupPath = Path.Combine(
+            instance.BackupsPath,
+            backupName
+        );
+
+        var temporaryBackupPath = Path.Combine(
+            instance.BackupsPath,
+            $"{BackupStorageConstants.InProgressDirectoryPrefix}{Guid.NewGuid():N}"
+        );
 
         Directory.CreateDirectory(temporaryBackupPath);
 
@@ -141,7 +161,6 @@ public sealed class BackupProcessor
                     temporaryBackupPath
                 );
 
-                // Optional targets that do not currently exist are not included in the completed backup manifest.
                 if (entry is not null)
                 {
                     entries.Add(entry);
@@ -157,7 +176,7 @@ public sealed class BackupProcessor
 
             var manifest = new BackupManifest
             {
-                SchemaVersion = ManifestSchemaVersion,
+                SchemaVersion = BackupStorageConstants.SupportedManifestSchemaVersion,
                 InstanceName = instance.Config.Name,
                 BackupName = backupName,
                 Kind = kind,
@@ -165,19 +184,24 @@ public sealed class BackupProcessor
                 Entries = entries.AsReadOnly()
             };
 
-            WriteManifest(temporaryBackupPath, manifest);
+            WriteManifest(
+                temporaryBackupPath,
+                manifest
+            );
 
             /*
-             * The temporary and completed directories share the same parent directory. Moving the temporary directory
-             * prevents an incomplete backup from appearing as a normal timestamped backup.
+             * The temporary and completed directories share the same parent. Moving the temporary directory prevents an
+             * incomplete operation from appearing as a completed timestamped backup.
              */
-            Directory.Move(temporaryBackupPath, completedBackupPath);
+            Directory.Move(
+                temporaryBackupPath,
+                completedBackupPath
+            );
 
             return manifest;
         }
         catch
         {
-            // Best-effort cleanup prevents failed operations from leaving unnecessary temporary data behind.
             TryDeleteDirectory(temporaryBackupPath);
             throw;
         }
@@ -185,26 +209,34 @@ public sealed class BackupProcessor
 
     #endregion
 
-    #region Backup Operations
+    #region Backup Coordination
 
     /// <summary>
-    /// Copies one configured target into a temporary backup directory.
+    /// Resolves and executes the backup strategy for one configured target.
     /// </summary>
-    /// <param name="target">The enabled target to copy.</param>
-    /// <param name="instancePath">The absolute instance directory used to resolve relative source paths.</param>
-    /// <param name="temporaryBackupPath">The temporary directory holding the backup while it is being created.</param>
+    /// <param name="target">The enabled target to back up.</param>
+    /// <param name="instancePath">The instance directory used to resolve relative source paths.</param>
+    /// <param name="temporaryBackupPath">The temporary directory containing the in-progress backup.</param>
     /// <returns>
     /// A manifest entry describing the copied target, or <see langword="null"/> when an optional source does not exist.
     /// </returns>
-    private static BackupManifestEntry? BackupTarget(
+    private BackupManifestEntry? BackupTarget(
         TargetPath target,
         string instancePath,
         string temporaryBackupPath
     )
     {
-        var sourcePath = PathResolver.ResolveSourcePath(target.Source, instancePath);
+        var strategy = TargetPathStrategyResolver.Resolve(
+            BackupStrategies,
+            target.Type
+        );
 
-        if (!SourceExists(target.Type, sourcePath))
+        var sourcePath = PathResolver.ResolveSourcePath(
+            target.Source,
+            instancePath
+        );
+
+        if (!strategy.SourceExists(sourcePath))
         {
             if (!target.Required)
             {
@@ -217,22 +249,21 @@ public sealed class BackupProcessor
             );
         }
 
-        var destinationPath = Path.GetFullPath(target.BackupPath, temporaryBackupPath);
-
-        EnsurePathIsWithinDirectory(
-            destinationPath,
-            temporaryBackupPath,
-            target.Id
+        var destinationPath = Path.GetFullPath(
+            target.BackupPath,
+            temporaryBackupPath
         );
 
-        var copyResult = target.Type switch
-        {
-            TargetPathType.File => CopyFile(sourcePath, destinationPath),
-            TargetPathType.Directory => CopyDirectory(sourcePath, destinationPath),
-            _ => throw new InvalidOperationException(
-                $"Target '{target.Id}' has an unsupported target type '{target.Type}'."
-            )
-        };
+        FileSystemSafety.EnsurePathIsWithinDirectory(
+            destinationPath,
+            temporaryBackupPath,
+            $"Target '{target.Id}' backup path"
+        );
+
+        var statistics = strategy.Backup(
+            sourcePath,
+            destinationPath
+        );
 
         return new BackupManifestEntry
         {
@@ -241,153 +272,8 @@ public sealed class BackupProcessor
             Source = target.Source,
             Type = target.Type,
             BackupPath = target.BackupPath,
-            FileCount = copyResult.FileCount,
-            TotalBytes = copyResult.TotalBytes
-        };
-    }
-
-    /// <summary>
-    /// Copies a configured file into the backup.
-    /// </summary>
-    /// <param name="sourcePath">The absolute source-file path.</param>
-    /// <param name="destinationPath">The absolute backup-file path.</param>
-    /// <returns>The number of files and bytes copied.</returns>
-    /// <exception cref="FileNotFoundException">Thrown when <paramref name="sourcePath"/> does not exist.</exception>
-    /// <exception cref="IOException">Thrown when the source is a symbolic link or the copy operation fails.</exception>
-    private static CopyResult CopyFile(
-        string sourcePath,
-        string destinationPath
-    )
-    {
-        var sourceFile = new FileInfo(sourcePath);
-
-        if (!sourceFile.Exists)
-        {
-            throw new FileNotFoundException(
-                "The configured backup source file was not found.",
-                sourcePath
-            );
-        }
-
-        ThrowIfReparsePoint(sourceFile);
-
-        var destinationDirectory = Path.GetDirectoryName(destinationPath);
-
-        if (!string.IsNullOrWhiteSpace(destinationDirectory))
-        {
-            Directory.CreateDirectory(destinationDirectory);
-        }
-
-        File.Copy(sourcePath, destinationPath, overwrite: false);
-
-        return new CopyResult(
-            FileCount: 1,
-            TotalBytes: sourceFile.Length
-        );
-    }
-
-    /// <summary>
-    /// Recursively copies a configured directory into the backup while preserving empty directories.
-    /// </summary>
-    /// <param name="sourcePath">The absolute source-directory path.</param>
-    /// <param name="destinationPath">The absolute backup-directory path.</param>
-    /// <returns>The number of files and bytes copied.</returns>
-    /// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="sourcePath"/> does not exist.</exception>
-    /// <exception cref="IOException">Thrown when a symbolic link or junction is encountered or a copy operation fails.</exception>
-    private static CopyResult CopyDirectory(
-        string sourcePath,
-        string destinationPath
-    )
-    {
-        var sourceDirectory = new DirectoryInfo(sourcePath);
-
-        if (!sourceDirectory.Exists)
-        {
-            throw new DirectoryNotFoundException(
-                $"The configured backup source directory '{sourcePath}' was not found."
-            );
-        }
-
-        ThrowIfReparsePoint(sourceDirectory);
-
-        Directory.CreateDirectory(destinationPath);
-
-        long fileCount = 0;
-        long totalBytes = 0;
-
-        CopyDirectoryContents(
-            sourceDirectory,
-            destinationPath,
-            ref fileCount,
-            ref totalBytes
-        );
-
-        return new CopyResult(fileCount, totalBytes);
-    }
-
-    /// <summary>
-    /// Copies the contents of a source directory and accumulates file-count and byte-count information.
-    /// </summary>
-    /// <param name="sourceDirectory">The source directory currently being copied.</param>
-    /// <param name="destinationPath">The corresponding destination directory.</param>
-    /// <param name="fileCount">The accumulated number of copied files.</param>
-    /// <param name="totalBytes">The accumulated size, in bytes, of copied files.</param>
-    private static void CopyDirectoryContents(
-        DirectoryInfo sourceDirectory,
-        string destinationPath,
-        ref long fileCount,
-        ref long totalBytes
-    )
-    {
-        foreach (var file in sourceDirectory.EnumerateFiles())
-        {
-            ThrowIfReparsePoint(file);
-
-            var destinationFilePath = Path.Combine(destinationPath, file.Name);
-
-            file.CopyTo(destinationFilePath, overwrite: false);
-
-            fileCount++;
-            totalBytes += file.Length;
-        }
-
-        foreach (var childDirectory in sourceDirectory.EnumerateDirectories())
-        {
-            ThrowIfReparsePoint(childDirectory);
-
-            var childDestinationPath = Path.Combine(destinationPath, childDirectory.Name);
-
-            // Creating the destination before recursion preserves directories that contain no files.
-            Directory.CreateDirectory(childDestinationPath);
-
-            CopyDirectoryContents(
-                childDirectory,
-                childDestinationPath,
-                ref fileCount,
-                ref totalBytes
-            );
-        }
-    }
-
-    /// <summary>
-    /// Determines whether a configured source exists and matches its declared target type.
-    /// </summary>
-    /// <param name="type">The declared target type.</param>
-    /// <param name="sourcePath">The resolved absolute source path.</param>
-    /// <returns><see langword="true"/> when the expected source exists; otherwise, <see langword="false"/>.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when <paramref name="type"/> is unsupported.</exception>
-    private static bool SourceExists(
-        TargetPathType type,
-        string sourcePath
-    )
-    {
-        return type switch
-        {
-            TargetPathType.File => File.Exists(sourcePath),
-            TargetPathType.Directory => Directory.Exists(sourcePath),
-            _ => throw new InvalidOperationException(
-                $"Target type '{type}' is not supported for backup operations."
-            )
+            FileCount = statistics.FileCount,
+            TotalBytes = statistics.TotalBytes
         };
     }
 
@@ -396,9 +282,6 @@ public sealed class BackupProcessor
     /// </summary>
     /// <param name="target">The required target whose source does not exist.</param>
     /// <param name="sourcePath">The resolved absolute source path.</param>
-    /// <exception cref="FileNotFoundException">Thrown when a required file target does not exist.</exception>
-    /// <exception cref="DirectoryNotFoundException">Thrown when a required directory target does not exist.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the target type is unsupported.</exception>
     private static void ThrowMissingSourceException(
         TargetPath target,
         string sourcePath
@@ -438,10 +321,20 @@ public sealed class BackupProcessor
         BackupManifest manifest
     )
     {
-        var manifestPath = Path.Combine(temporaryBackupPath, ManifestFileName);
-        var json = JsonSerializer.Serialize(manifest, JsonOptions);
+        var manifestPath = Path.Combine(
+            temporaryBackupPath,
+            BackupStorageConstants.ManifestFileName
+        );
 
-        File.WriteAllText(manifestPath, json);
+        var json = JsonSerializer.Serialize(
+            manifest,
+            JsonOptions
+        );
+
+        File.WriteAllText(
+            manifestPath,
+            json
+        );
     }
 
     #endregion
@@ -479,52 +372,27 @@ public sealed class BackupProcessor
 
     #endregion
 
-    #region Filesystem Safety
+    #region Strategy Creation
 
     /// <summary>
-    /// Ensures that a resolved backup destination remains beneath the temporary backup directory.
+    /// Creates the default strategies used to back up supported target types.
     /// </summary>
-    /// <param name="destinationPath">The resolved target destination.</param>
-    /// <param name="temporaryBackupPath">The temporary backup directory that must contain the destination.</param>
-    /// <param name="targetId">The identifier used when reporting an unsafe target.</param>
-    /// <exception cref="InvalidDataException">
-    /// Thrown when the destination is equal to or outside the temporary backup directory.
-    /// </exception>
-    private static void EnsurePathIsWithinDirectory(
-        string destinationPath,
-        string temporaryBackupPath,
-        string targetId
-    )
+    /// <returns>A read-only collection containing one strategy for each supported target type.</returns>
+    private static IReadOnlyCollection<IBackupTargetStrategy> CreateDefaultStrategies()
     {
-        var normalizedDestination = Path.GetFullPath(destinationPath);
-        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(temporaryBackupPath));
-        var rootWithSeparator = normalizedRoot + Path.DirectorySeparatorChar;
-
-        if (!normalizedDestination.StartsWith(rootWithSeparator, GetPathComparison()))
-        {
-            throw new InvalidDataException(
-                $"Target '{targetId}' has a backup path that escapes the temporary backup directory."
-            );
-        }
+        return
+        [
+            new FileTargetStrategy(),
+            new DirectoryTargetStrategy()
+        ];
     }
 
-    /// <summary>
-    /// Throws an exception when a filesystem entry is a symbolic link, junction, or another reparse-point type.
-    /// </summary>
-    /// <param name="entry">The filesystem entry to inspect.</param>
-    /// <exception cref="IOException">Thrown when <paramref name="entry"/> is a reparse point.</exception>
-    private static void ThrowIfReparsePoint(FileSystemInfo entry)
-    {
-        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new IOException(
-                $"Symbolic links and junctions are not currently supported: '{entry.FullName}'."
-            );
-        }
-    }
+    #endregion
+
+    #region Cleanup
 
     /// <summary>
-    /// Attempts to remove an incomplete temporary backup without masking the exception that caused the backup to fail.
+    /// Attempts to remove an incomplete temporary backup without masking the original failure.
     /// </summary>
     /// <param name="directoryPath">The temporary backup directory to remove.</param>
     private static void TryDeleteDirectory(string directoryPath)
@@ -533,42 +401,20 @@ public sealed class BackupProcessor
         {
             if (Directory.Exists(directoryPath))
             {
-                Directory.Delete(directoryPath, recursive: true);
+                Directory.Delete(
+                    directoryPath,
+                    recursive: true
+                );
             }
         }
         catch
         {
             /*
-             * Cleanup is best-effort. A cleanup failure must not replace the original backup exception, which provides
-             * more useful information about why the operation failed.
+             * Cleanup is best-effort. A cleanup failure must not replace the original exception, which contains more
+             * useful information about why backup creation failed.
              */
         }
     }
-
-    /// <summary>
-    /// Gets the appropriate path-comparison behavior for the current operating system.
-    /// </summary>
-    /// <returns>A case-insensitive comparison on Windows and a case-sensitive comparison on other operating systems.</returns>
-    private static StringComparison GetPathComparison()
-    {
-        return OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-    }
-
-    #endregion
-
-    #region Private Types
-
-    /// <summary>
-    /// Contains aggregate information about files copied for a target.
-    /// </summary>
-    /// <param name="FileCount">The number of copied files.</param>
-    /// <param name="TotalBytes">The combined size, in bytes, of the copied files.</param>
-    private readonly record struct CopyResult(
-        long FileCount,
-        long TotalBytes
-    );
 
     #endregion
 }

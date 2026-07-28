@@ -1,3 +1,4 @@
+using InstanceBackupManager.Console.Constants;
 using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Utilities;
@@ -15,7 +16,7 @@ internal static class ConsoleHelper
     internal static void ShowInvalidSelectionMessage()
     {
         SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Invalid selection. Please try again.");
+        SystemConsole.WriteLine(ConsoleMessages.InvalidSelection);
     }
 
     /// <summary>
@@ -23,7 +24,7 @@ internal static class ConsoleHelper
     /// </summary>
     internal static void WaitForContinue()
     {
-        WaitForKey("Press any key to continue...");
+        WaitForKey(ConsoleMessages.PressAnyKeyToContinue);
     }
 
     /// <summary>
@@ -31,7 +32,7 @@ internal static class ConsoleHelper
     /// </summary>
     internal static void WaitForExit()
     {
-        WaitForKey("Press any key to exit...");
+        WaitForKey(ConsoleMessages.PressAnyKeyToExit);
     }
 
     /// <summary>
