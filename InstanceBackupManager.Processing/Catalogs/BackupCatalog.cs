@@ -4,6 +4,7 @@ using InstanceBackupManager.Processing.Constants;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Policies;
 using InstanceBackupManager.Processing.Utilities;
 
 namespace InstanceBackupManager.Processing.Catalogs;
@@ -255,6 +256,21 @@ public sealed class BackupCatalog
             throw new InvalidDataException(
                 $"Backup '{backupName}' does not identify the instance that created it."
             );
+        }
+
+        if (manifest.DisplayName is not null)
+        {
+            try
+            {
+                BackupDisplayNamePolicy.Normalize(manifest.DisplayName);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException(
+                    $"Backup '{backupName}' has an invalid display name: {exception.Message}",
+                    exception
+                );
+            }
         }
 
         if (!string.Equals(

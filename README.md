@@ -12,7 +12,7 @@ Each managed item is represented by an instance directory containing an `instanc
 - Multiple targets per instance
 - Optional and required source paths
 - Per-target enable and clear settings
-- Timestamped backups with manifests
+- Timestamped backups with optional user-facing names and manifests
 - Restore using current configured destination paths
 - Optional pre-restore safety backups
 - Delete one or all completed backups
@@ -140,19 +140,21 @@ Target IDs and backup paths must be unique and non-overlapping within an instanc
 
 ### Back up now
 
-Creates a timestamped backup containing every enabled target.
+Creates a timestamped backup containing every enabled target. The application prompts for an optional user-facing backup name. Leaving the name blank creates a timestamped name automatically.
+
+Backup names are presentation metadata and do not change the timestamped directory used to store the backup. Names are trimmed, limited to 100 characters, and cannot contain line breaks or other control characters.
 
 Required targets must exist. Missing optional targets are skipped and omitted from the manifest. After a successful manual backup, the configured manual retention limit is applied.
 
 ### Restore from backup
 
-Displays validated completed backups from newest to oldest. Each backup is labeled as either `Manual` or `Pre-restore`.
+Displays validated completed backups from newest to oldest. Each menu entry includes its user-facing name, creation time, backup kind, file count, and byte count. Manifests created before backup names were introduced receive a generated timestamped label.
 
 Restore uses the current `Source` path from `instance.json`. The historical source stored in the manifest is informational and does not override the current configuration.
 
 Matching files are overwritten. Files currently present at the destination but absent from the selected backup remain unchanged.
 
-Before restoration, the application offers to create a pre-restore safety backup. Pressing Enter accepts this safety backup by default. Pre-restore retention is applied only after restoration succeeds.
+Before restoration, the application offers to create a pre-restore safety backup. Pressing Enter accepts this safety backup by default. Its generated name identifies the selected backup, such as `Before restoring "Before Palace of Winds"`. Pre-restore retention is applied only after restoration succeeds.
 
 ### Clear instance data
 
@@ -209,6 +211,21 @@ The selected row uses colors derived from the current terminal theme. When conso
 
 Exact-name and `DELETE ALL` prompts remain typed confirmations because they protect destructive operations.
 
+## Terminal Appearance
+
+Instance Backup Manager runs inside the user's selected terminal host. Windows Terminal, the VS Code integrated terminal, PowerShell hosts, and the legacy Windows console each control their own font, font size, color scheme, and related appearance settings. The application cannot reliably select or privately load a bundled font.
+
+For the best experience, configure a readable monospaced font in the terminal profile used to launch the application. A Nerd Font is optional; the application does not require special icon glyphs.
+
+To change the font in Windows Terminal:
+
+1. Open Windows Terminal settings.
+2. Select the profile used to run Instance Backup Manager.
+3. Open **Appearance**.
+4. Select the desired font face and save the profile.
+
+A font file should not be redistributed with the application unless its license explicitly permits redistribution. Users who install a separately obtained font must still select it in their terminal settings.
+
 ## Application Logs
 
 Command activity is written to daily text files under the portable application directory:
@@ -226,6 +243,7 @@ Each completed backup contains a `manifest.json` describing:
 
 - Manifest schema version
 - Instance name at creation time
+- Optional user-facing backup name
 - Backup directory name
 - Backup kind
 - UTC creation time
@@ -273,7 +291,7 @@ The implementation uses several focused design patterns:
 - **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, and runtime-context creation.
 - **Repository:** `BackupCatalog` owns discovery and validated loading of completed backups.
 - **Strategy:** File and directory targets use separate backup, restore, and clear algorithms selected by target type.
-- **Policy utility:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules.
+- **Policy utilities:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules. `BackupDisplayNamePolicy` centralizes backup-name generation, normalization, validation, and backward-compatible display.
 - **Report model:** Instance validation returns structured findings that the console workflow formats for display.
 - **Reusable selector:** Console menus share keyboard navigation and redirected-input behavior without changing command execution.
 - **Composition root:** `Program` creates and connects the application’s processors, workflows, commands, and menus.
@@ -300,7 +318,7 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-Tests cover configuration processing, backup discovery and maintenance, retention, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
+Tests cover configuration processing, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
 
 ## Development Workflow
 

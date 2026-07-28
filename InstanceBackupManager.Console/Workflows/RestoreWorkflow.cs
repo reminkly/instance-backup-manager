@@ -6,6 +6,7 @@ using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Policies;
 using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Workflows;
@@ -123,7 +124,10 @@ internal sealed class RestoreWorkflow
 
             if (preRestoreBackupChoice == PreRestoreBackupChoice.Create)
             {
-                CreatePreRestoreBackup(instance);
+                CreatePreRestoreBackup(
+                    instance,
+                    selectedBackup
+                );
                 preRestoreBackupCreated = true;
             }
 
@@ -334,14 +338,20 @@ internal sealed class RestoreWorkflow
     /// Creates and displays a safety backup containing the instance's current data before restoration.
     /// </summary>
     /// <param name="instance">The loaded instance whose current data will be backed up.</param>
-    private void CreatePreRestoreBackup(InstanceContext instance)
+    /// <param name="selectedBackup">The completed backup whose restoration triggered the safety backup.</param>
+    private void CreatePreRestoreBackup(
+        InstanceContext instance,
+        BackupDescriptor selectedBackup
+    )
     {
         SystemConsole.WriteLine();
         SystemConsole.WriteLine("Creating pre-restore backup...");
 
+        var displayName = BackupDisplayNamePolicy.CreatePreRestoreDisplayName(selectedBackup);
         var manifest = BackupProcessor.CreateBackup(
             instance,
-            BackupKind.PreRestore
+            BackupKind.PreRestore,
+            displayName
         );
         var backupPath = Path.Combine(instance.BackupsPath, manifest.BackupName);
         var fileCount = manifest.Entries.Sum(entry => entry.FileCount);
@@ -349,6 +359,7 @@ internal sealed class RestoreWorkflow
 
         SystemConsole.WriteLine();
         SystemConsole.WriteLine("Pre-restore backup completed successfully.");
+        SystemConsole.WriteLine($"Name:   {manifest.DisplayName}");
         SystemConsole.WriteLine($"Backup: {manifest.BackupName}");
         SystemConsole.WriteLine($"Files:  {fileCount}");
         SystemConsole.WriteLine($"Bytes:  {totalBytes}");
@@ -371,7 +382,9 @@ internal sealed class RestoreWorkflow
             ? "file"
             : "files";
 
-        return $"{createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+        var displayName = BackupDisplayNamePolicy.GetDisplayName(backup.Manifest);
+
+        return $"{displayName} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
                $"{fileCount} {fileLabel}, {totalBytes} bytes";
     }
 

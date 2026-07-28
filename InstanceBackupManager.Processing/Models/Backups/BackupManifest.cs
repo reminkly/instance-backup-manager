@@ -20,6 +20,14 @@ public sealed class BackupManifest
     public required string InstanceName { get; init; }
 
     /// <summary>
+    /// Gets the optional user-facing name assigned to the backup.
+    /// </summary>
+    /// <remarks>
+    /// A null value identifies a manifest created before display names were introduced.
+    /// </remarks>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
     /// Gets the directory name assigned to the backup.
     /// </summary>
     public required string BackupName { get; init; }

@@ -6,6 +6,7 @@ using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Policies;
 using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Workflows;
@@ -205,6 +206,7 @@ internal sealed class BackupMaintenanceWorkflow
         var totalBytes = backup.Manifest.Entries.Sum(entry => entry.TotalBytes);
         var details = string.Join(
             Environment.NewLine,
+            $"Name:    {BackupDisplayNamePolicy.GetDisplayName(backup.Manifest)}",
             $"Backup:  {backup.BackupName}",
             $"Kind:    {GetBackupKindDisplayName(backup.Manifest.Kind)}",
             $"Created: {createdLocal:yyyy-MM-dd HH:mm:ss}",
@@ -358,7 +360,9 @@ internal sealed class BackupMaintenanceWorkflow
             ? "file"
             : "files";
 
-        return $"{createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+        var displayName = BackupDisplayNamePolicy.GetDisplayName(backup.Manifest);
+
+        return $"{displayName} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
                $"{fileCount} {fileLabel}, {totalBytes} bytes";
     }
 
@@ -380,8 +384,9 @@ internal sealed class BackupMaintenanceWorkflow
             : "files";
 
         SystemConsole.WriteLine(
-            $"{selectionNumber}. {createdLocal:yyyy-MM-dd HH:mm:ss} " +
-            $"[{GetBackupKindDisplayName(backup.Manifest.Kind)}] - {fileCount} {fileLabel}, {totalBytes} bytes"
+            $"{selectionNumber}. {BackupDisplayNamePolicy.GetDisplayName(backup.Manifest)} | " +
+            $"{createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+            $"{fileCount} {fileLabel}, {totalBytes} bytes"
         );
     }
 

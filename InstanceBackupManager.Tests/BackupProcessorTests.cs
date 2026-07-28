@@ -578,6 +578,89 @@ public sealed class BackupProcessorTests
         Assert.AreEqual(BackupKind.PreRestore, manifest.Kind);
     }
 
+
+    /// <summary>
+    /// Verifies that a supplied backup display name is normalized and written to the completed manifest.
+    /// </summary>
+    [TestMethod]
+    public void CreateBackup_WhenDisplayNameIsProvided_PersistsNormalizedDisplayName()
+    {
+        var sourceFilePath = Path.Combine(_sourcePath, "save.dat");
+
+        File.WriteAllText(sourceFilePath, "Save data");
+
+        var instance = CreateInstanceContext(
+            CreateTarget(
+                id: "save",
+                source: sourceFilePath,
+                backupPath: Path.Combine("save", "save.dat"),
+                type: TargetPathType.File
+            )
+        );
+
+        var manifest = _processor.CreateBackup(
+            instance,
+            BackupKind.Manual,
+            "  Before Palace of Winds  "
+        );
+
+        Assert.AreEqual("Before Palace of Winds", manifest.DisplayName);
+    }
+
+    /// <summary>
+    /// Verifies that a manual backup created without a supplied name receives a generated display name.
+    /// </summary>
+    [TestMethod]
+    public void CreateBackup_WhenDisplayNameIsNotProvided_GeneratesDisplayName()
+    {
+        var sourceFilePath = Path.Combine(_sourcePath, "save.dat");
+
+        File.WriteAllText(sourceFilePath, "Save data");
+
+        var instance = CreateInstanceContext(
+            CreateTarget(
+                id: "save",
+                source: sourceFilePath,
+                backupPath: Path.Combine("save", "save.dat"),
+                type: TargetPathType.File
+            )
+        );
+
+        var manifest = _processor.CreateBackup(instance);
+
+        Assert.AreEqual(
+            $"Manual backup - {BackupTime.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+            manifest.DisplayName
+        );
+    }
+
+    /// <summary>
+    /// Verifies that an invalid display name is rejected before any completed backup is created.
+    /// </summary>
+    [TestMethod]
+    public void CreateBackup_WhenDisplayNameContainsControlCharacter_ThrowsArgumentException()
+    {
+        var sourceFilePath = Path.Combine(_sourcePath, "save.dat");
+
+        File.WriteAllText(sourceFilePath, "Save data");
+
+        var instance = CreateInstanceContext(
+            CreateTarget(
+                id: "save",
+                source: sourceFilePath,
+                backupPath: Path.Combine("save", "save.dat"),
+                type: TargetPathType.File
+            )
+        );
+
+        Assert.ThrowsExactly<ArgumentException>(
+            () => _processor.CreateBackup(
+                instance,
+                BackupKind.Manual,
+                "First line\nSecond line"
+            )
+        );
+    }
     #endregion
 
     #region Test Helpers
