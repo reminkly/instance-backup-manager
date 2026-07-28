@@ -6,7 +6,7 @@ Each managed item is represented by an instance directory containing an `instanc
 
 ## Features
 
-- Portable single-file Windows application
+- Portable, self-contained Windows application
 - Multiple independently configured instances
 - Individual file and complete-directory targets
 - Multiple targets per instance
@@ -50,8 +50,8 @@ The `Instances` directory is created beside the executable. Each immediate subdi
 2. Start Instance Backup Manager.
 3. Select the unconfigured instance.
 4. The application creates a skeleton `instance.json`.
-5. Update the configuration file before continuing.
-6. Return to instance selection and select the configured instance.
+5. Update the configuration file.
+6. Restart the application and select the configured instance.
 
 A complete example is available at [`examples/instance.example.json`](examples/instance.example.json).
 
@@ -90,6 +90,8 @@ A complete example is available at [`examples/instance.example.json`](examples/i
   ]
 }
 ```
+
+Configuration property names are case-insensitive. JSON comments and trailing commas are accepted.
 
 ## Instance Configuration
 
@@ -135,9 +137,7 @@ Target IDs and backup paths must be unique and non-overlapping within an instanc
 
 Creates a timestamped backup containing every enabled target.
 
-Required targets must exist. Missing optional targets are skipped and omitted from the manifest.
-
-After a successful manual backup, the configured manual retention limit is applied.
+Required targets must exist. Missing optional targets are skipped and omitted from the manifest. After a successful manual backup, the configured manual retention limit is applied.
 
 ### Restore from backup
 
@@ -147,9 +147,7 @@ Restore uses the current `Source` path from `instance.json`. The historical sour
 
 Matching files are overwritten. Files currently present at the destination but absent from the selected backup remain unchanged.
 
-Before restoration, the application offers to create a pre-restore safety backup. Pressing Enter accepts this safety backup by default.
-
-Pre-restore retention is applied only after restoration succeeds.
+Before restoration, the application offers to create a pre-restore safety backup. Pressing Enter accepts this safety backup by default. Pre-restore retention is applied only after restoration succeeds.
 
 ### Clear instance data
 
@@ -160,13 +158,9 @@ Clear is shown only when at least one target has both:
 "AllowClear": true
 ```
 
-For file targets, the configured file is deleted.
+For file targets, the configured file is deleted. For directory targets, all contents are deleted while the configured root directory is preserved.
 
-For directory targets, all contents are deleted while the configured root directory is preserved.
-
-The application displays every affected path and requires the exact instance name before continuing.
-
-Clear does not automatically create a backup.
+The application displays every affected path and requires the exact instance name before continuing. Clear does not automatically create a backup.
 
 ### Manage backups
 
@@ -175,9 +169,7 @@ Backup management supports:
 - Delete one completed backup
 - Delete all validated completed backups
 
-Deleting one backup requires confirmation.
-
-Deleting all backups requires both the exact instance name and the phrase `DELETE ALL`.
+Deleting one backup requires confirmation. Deleting all backups requires both the exact instance name and the phrase `DELETE ALL`.
 
 In-progress and unrelated directories are not deleted.
 
@@ -215,9 +207,28 @@ Instance Backup Manager rejects or protects against:
 - Malformed or unsupported manifests
 - Partial bulk deletion when validation fails
 
-All destructive deletion plans are validated before any selected directory is removed.
+All destructive deletion plans are validated before any selected directory is removed. Backups are still recommended before using Restore or Clear against important data.
 
-Backups are still recommended before using Restore or Clear against important data.
+## Architecture
+
+The solution is divided into three projects:
+
+```text
+InstanceBackupManager.Console
+InstanceBackupManager.Processing
+InstanceBackupManager.Tests
+```
+
+The implementation uses several focused design patterns:
+
+- **Command:** Instance-menu actions implement a common command contract, allowing the menu to display and dispatch available operations without depending directly on every workflow.
+- **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, and runtime-context creation.
+- **Repository:** `BackupCatalog` owns discovery and validated loading of completed backups.
+- **Strategy:** File and directory targets use separate backup, restore, and clear algorithms selected by target type.
+- **Policy utility:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules.
+- **Composition root:** `Program` creates and connects the application’s processors, workflows, commands, and menus.
+
+The processing project contains the filesystem and configuration behavior. The console project is responsible for user interaction and workflow coordination.
 
 ## Building
 
@@ -239,7 +250,7 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-The current processing test suite contains 106 tests.
+Tests cover configuration processing, backup discovery and maintenance, retention, backup and restore behavior, clear safety, target strategies, filesystem safety, and console command dispatch.
 
 ## Publishing
 
@@ -264,6 +275,25 @@ THIRD-PARTY-NOTICES.txt
 ```
 
 Create the `Instances` directory beside the executable, or start the application and allow it to create the directory.
+
+## Cutting a Release
+
+Before cutting a release:
+
+1. Update `Version`, `FileVersion`, and `InformationalVersion` in `InstanceBackupManager.Console.csproj`.
+2. Commit and push all changes.
+3. Confirm the working tree is clean and the current branch is `main`.
+4. Confirm GitHub CLI authentication with `gh auth status`.
+5. Run the VS Code task **Cut GitHub Release** and enter the version without a leading `v`.
+
+The release script:
+
+- Runs the tests in Release configuration
+- Publishes the self-contained Windows x64 application
+- Packages the executable, notices, license, and README
+- Creates and pushes an annotated Git tag
+- Creates a draft GitHub release with generated release notes
+- Opens the draft release for final review
 
 ## License
 
