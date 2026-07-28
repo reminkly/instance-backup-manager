@@ -1,4 +1,3 @@
-using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
@@ -128,56 +127,7 @@ internal sealed class ConsoleApplication
     /// <returns>The selected instance, or <see langword="null"/> when the user chooses to exit.</returns>
     private static InstanceDescriptor? PromptForInstance(IReadOnlyList<InstanceDescriptor> instances)
     {
-        while (true)
-        {
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Instance Backup Manager");
-            SystemConsole.WriteLine("=======================");
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Select an instance:");
-            SystemConsole.WriteLine();
-
-            for (var index = 0; index < instances.Count; index++)
-            {
-                var instance = instances[index];
-
-                var status = instance.HasConfiguration
-                    ? "Ready"
-                    : "Configuration required";
-
-                SystemConsole.WriteLine($"{index + 1}. {instance.Name} [{status}]");
-            }
-
-            SystemConsole.WriteLine("0. Exit");
-            SystemConsole.WriteLine();
-            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
-
-            var input = SystemConsole.ReadLine();
-
-            if (input is null)
-            {
-                return null;
-            }
-
-            if (!int.TryParse(input, out var selection))
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            if (selection == 0)
-            {
-                return null;
-            }
-
-            if (selection < 1 || selection > instances.Count)
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            return instances[selection - 1];
-        }
+        return InstanceSelectionMenu.Select(instances);
     }
 
     #endregion

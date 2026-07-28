@@ -1,8 +1,5 @@
 using InstanceBackupManager.Console.Commands;
-using InstanceBackupManager.Console.Constants;
-using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing.Models.Instances;
-using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Menus;
 
@@ -26,8 +23,6 @@ internal sealed class InstanceMenu
     /// Initializes a new instance menu using the supplied commands.
     /// </summary>
     /// <param name="commands">The commands that can be displayed and executed by the menu.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="commands"/> is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when no commands are supplied or command selections are duplicated.</exception>
     internal InstanceMenu(IReadOnlyCollection<IInstanceCommand> commands)
     {
         ArgumentNullException.ThrowIfNull(commands);
@@ -80,75 +75,42 @@ internal sealed class InstanceMenu
                 .Where(command => command.IsAvailable(instance))
                 .ToList();
 
-            DisplayMenu(
-                instance,
-                availableCommands
-            );
-
-            var input = SystemConsole.ReadLine();
-
-            if (input is null)
-            {
-                return 0;
-            }
-
-            var selection = input.Trim();
-
-            if (selection == "0")
-            {
-                return 0;
-            }
-
-            var selectedCommand = availableCommands.SingleOrDefault(
-                command => string.Equals(
-                    command.Selection,
-                    selection,
-                    StringComparison.OrdinalIgnoreCase
+            var menuItems = availableCommands
+                .Select(
+                    command => new ConsoleMenuItem<IInstanceCommand?>(
+                        command.Selection,
+                        command.Description,
+                        command
+                    )
                 )
+                .Append(
+                    new ConsoleMenuItem<IInstanceCommand?>(
+                        "0",
+                        "Return to instances",
+                        Value: null,
+                        IsCancellation: true
+                    )
+                )
+                .ToList()
+                .AsReadOnly();
+
+            var selection = ConsoleMenu.Select(
+                instance.Config.Name,
+                menuItems
             );
 
-            if (selectedCommand is null)
+            if (selection.IsCancelled || selection.Value is null)
             {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
+                return 0;
             }
 
-            var result = selectedCommand.Execute(instance);
+            var result = selection.Value.Execute(instance);
 
             if (result != 0)
             {
                 return result;
             }
         }
-    }
-
-    #endregion
-
-    #region Display Helpers
-
-    /// <summary>
-    /// Displays the instance heading and commands currently available for execution.
-    /// </summary>
-    /// <param name="instance">The selected instance.</param>
-    /// <param name="commands">The commands available for the selected instance.</param>
-    private static void DisplayMenu(
-        InstanceContext instance,
-        IReadOnlyCollection<IInstanceCommand> commands
-    )
-    {
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine(instance.Config.Name);
-        SystemConsole.WriteLine(new string('=', instance.Config.Name.Length));
-        SystemConsole.WriteLine();
-
-        foreach (var command in commands)
-        {
-            SystemConsole.WriteLine($"{command.Selection}. {command.Description}");
-        }
-
-        SystemConsole.WriteLine("0. Return to instances");
-        SystemConsole.WriteLine();
-        SystemConsole.Write(ConsoleMessages.SelectionPrompt);
     }
 
     #endregion

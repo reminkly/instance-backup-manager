@@ -17,6 +17,9 @@ Each managed item is represented by an instance directory containing an `instanc
 - Optional pre-restore safety backups
 - Delete one or all completed backups
 - Independent retention limits for manual and pre-restore backups
+- Keyboard-driven menus with highlighted selection and shortcut keys
+- Non-mutating instance, target, and backup validation
+- Daily command activity logs
 - Protection against unsafe paths, overlapping targets, symbolic links, and junctions
 - Configuration and manifest schema validation
 
@@ -27,6 +30,8 @@ Place the published executable wherever you want the application and its backups
 ```text
 InstanceBackupManager.exe
 THIRD-PARTY-NOTICES.txt
+Logs/
+└── instance-backup-manager-2026-07-28.log
 Instances/
 ├── BizHawk - Minish Cap/
 │   ├── instance.json
@@ -51,7 +56,7 @@ The `Instances` directory is created beside the executable. Each immediate subdi
 3. Select the unconfigured instance.
 4. The application creates a skeleton `instance.json`.
 5. Update the configuration file.
-6. Restart the application and select the configured instance.
+6. Return to instance selection and select the configured instance.
 
 A complete example is available at [`examples/instance.example.json`](examples/instance.example.json).
 
@@ -173,6 +178,48 @@ Deleting one backup requires confirmation. Deleting all backups requires both th
 
 In-progress and unrelated directories are not deleted.
 
+### Validate instance
+
+Performs a non-mutating inspection of the loaded instance and reports successful checks, warnings, and errors.
+
+Validation includes:
+
+- Configuration schema and path rules
+- Instance enabled state
+- Enabled and disabled targets
+- Required and optional source availability
+- Resolved file and directory types
+- Reparse-point safety
+- Completed backup discovery and manifest validation
+- In-progress backup detection
+
+Validation does not create, overwrite, restore, or delete files.
+
+## Keyboard Navigation
+
+Interactive menus support:
+
+- Up/Down to move the highlighted selection and wrap at either end
+- Home/End to jump to the first or last item
+- Enter to choose the highlighted item
+- Escape to return to the previous menu or cancel a choice
+- Displayed number or letter keys as immediate shortcuts
+
+The selected row uses colors derived from the current terminal theme. When console input is redirected for tests or automation, menus retain line-based shortcut input.
+
+Exact-name and `DELETE ALL` prompts remain typed confirmations because they protect destructive operations.
+
+## Application Logs
+
+Command activity is written to daily text files under the portable application directory:
+
+```text
+Logs/
+└── instance-backup-manager-YYYY-MM-DD.log
+```
+
+Entries include UTC timestamps, severity, command name, instance name, and completion or failure state. Logging is best-effort: inability to create or append a log never prevents the requested operation.
+
 ## Backup Manifests
 
 Each completed backup contains a `manifest.json` describing:
@@ -222,10 +269,13 @@ InstanceBackupManager.Tests
 The implementation uses several focused design patterns:
 
 - **Command:** Instance-menu actions implement a common command contract, allowing the menu to display and dispatch available operations without depending directly on every workflow.
+- **Decorator:** Logging wraps instance commands without adding logging responsibilities to each command or workflow.
 - **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, and runtime-context creation.
 - **Repository:** `BackupCatalog` owns discovery and validated loading of completed backups.
 - **Strategy:** File and directory targets use separate backup, restore, and clear algorithms selected by target type.
 - **Policy utility:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules.
+- **Report model:** Instance validation returns structured findings that the console workflow formats for display.
+- **Reusable selector:** Console menus share keyboard navigation and redirected-input behavior without changing command execution.
 - **Composition root:** `Program` creates and connects the application’s processors, workflows, commands, and menus.
 
 The processing project contains the filesystem and configuration behavior. The console project is responsible for user interaction and workflow coordination.
@@ -250,7 +300,33 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-Tests cover configuration processing, backup discovery and maintenance, retention, backup and restore behavior, clear safety, target strategies, filesystem safety, and console command dispatch.
+Tests cover configuration processing, backup discovery and maintenance, retention, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
+
+## Development Workflow
+
+The repository uses `develop` for active development and `main` for tested, release-ready code.
+
+With separate local clones:
+
+```text
+instance-backup-manager/
+├── develop/
+└── main/
+```
+
+Commit and push active work from `develop`:
+
+```powershell
+git add -A
+git commit -m "Describe the change"
+git push origin develop
+```
+
+When changes are ready, open a pull request from `develop` into `main`. After it is merged, update the local main clone:
+
+```powershell
+git pull --ff-only origin main
+```
 
 ## Publishing
 
@@ -280,11 +356,14 @@ Create the `Instances` directory beside the executable, or start the application
 
 Before cutting a release:
 
-1. Update `Version`, `FileVersion`, and `InformationalVersion` in `InstanceBackupManager.Console.csproj`.
-2. Commit and push all changes.
-3. Confirm the working tree is clean and the current branch is `main`.
-4. Confirm GitHub CLI authentication with `gh auth status`.
-5. Run the VS Code task **Cut GitHub Release** and enter the version without a leading `v`.
+1. Commit and push the tested changes on `develop`.
+2. Merge `develop` into `main`, preferably through a pull request.
+3. Pull the updated `main` branch locally.
+4. Update `Version`, `FileVersion`, and `InformationalVersion` in `InstanceBackupManager.Console.csproj`.
+5. Commit and push the version change on `main`.
+6. Confirm the working tree is clean and the current branch is `main`.
+7. Confirm GitHub CLI authentication with `gh auth status`.
+8. Run the VS Code task **Cut GitHub Release** and enter the version without a leading `v`.
 
 The release script:
 

@@ -1,4 +1,5 @@
 using InstanceBackupManager.Console.Constants;
+using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Catalogs;
@@ -181,59 +182,35 @@ internal sealed class RestoreWorkflow
     /// <returns>The selected backup, or <see langword="null"/> when the user chooses to exit.</returns>
     private static BackupDescriptor? PromptForBackup(IReadOnlyList<BackupDescriptor> backups)
     {
-        while (true)
-        {
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Available Backups");
-            SystemConsole.WriteLine("=================");
-            SystemConsole.WriteLine();
+        var items = backups
+            .Select(
+                (backup, index) => new ConsoleMenuItem<BackupDescriptor?>(
+                    index < 9
+                        ? (index + 1).ToString()
+                        : null,
+                    CreateBackupDisplayLabel(backup),
+                    backup
+                )
+            )
+            .Append(
+                new ConsoleMenuItem<BackupDescriptor?>(
+                    "0",
+                    "Return",
+                    Value: null,
+                    IsCancellation: true
+                )
+            )
+            .ToList()
+            .AsReadOnly();
 
-            for (var index = 0; index < backups.Count; index++)
-            {
-                var backup = backups[index];
-                var createdLocal = backup.Manifest.CreatedUtc.ToLocalTime();
-                var fileCount = backup.Manifest.Entries.Sum(entry => entry.FileCount);
-                var totalBytes = backup.Manifest.Entries.Sum(entry => entry.TotalBytes);
-                var kindDisplayName = GetBackupKindDisplayName(backup.Manifest.Kind);
-                var fileLabel = fileCount == 1
-                    ? "file"
-                    : "files";
+        var result = ConsoleMenu.Select(
+            "Available Backups",
+            items
+        );
 
-                SystemConsole.WriteLine(
-                    $"{index + 1}. {createdLocal:yyyy-MM-dd HH:mm:ss} [{kindDisplayName}] - {fileCount} {fileLabel}, {totalBytes} bytes"
-                );
-            }
-
-            SystemConsole.WriteLine("0. Exit");
-            SystemConsole.WriteLine();
-            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
-
-            var input = SystemConsole.ReadLine();
-
-            if (input is null)
-            {
-                return null;
-            }
-
-            if (!int.TryParse(input, out var selection))
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            if (selection == 0)
-            {
-                return null;
-            }
-
-            if (selection < 1 || selection > backups.Count)
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            return backups[selection - 1];
-        }
+        return result.IsCancelled
+            ? null
+            : result.Value;
     }
 
     #endregion
@@ -251,61 +228,69 @@ internal sealed class RestoreWorkflow
         BackupDescriptor backup
     )
     {
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Restore Confirmation");
-        SystemConsole.WriteLine("====================");
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine($"Backup: {backup.BackupName}");
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Files contained in this backup will overwrite matching files at the current destinations.");
-        SystemConsole.WriteLine("Files not contained in the backup will remain unchanged.");
-
-        var sourceChanged = false;
-
-        foreach (var manifestEntry in backup.Manifest.Entries)
+        var details = new List<string>
         {
-            var currentTarget = instance.Config.Targets.SingleOrDefault(
-                target => string.Equals(
-                    target.Id,
-                    manifestEntry.TargetId,
-                    StringComparison.OrdinalIgnoreCase
+            $"Backup: {backup.BackupName}",
+            string.Empty,
+            "Files contained in this backup will overwrite matching files at the current destinations.",
+            "Files not contained in the backup will remain unchanged."
+        };
+
+        var changedDestinations = backup.Manifest.Entries
+            .Select(
+                manifestEntry => new
+                {
+                    ManifestEntry = manifestEntry,
+                    CurrentTarget = instance.Config.Targets.SingleOrDefault(
+                        target => string.Equals(
+                            target.Id,
+                            manifestEntry.TargetId,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                }
+            )
+            .Where(item => item.CurrentTarget is not null && item.CurrentTarget.Enabled)
+            .Where(
+                item => !string.Equals(
+                    item.ManifestEntry.Source,
+                    item.CurrentTarget!.Source,
+                    ConsoleHelper.GetPathComparison()
                 )
-            );
+            )
+            .ToList();
 
-            if (currentTarget is null || !currentTarget.Enabled)
+        if (changedDestinations.Count > 0)
+        {
+            details.Add(string.Empty);
+            details.Add("The following destinations have changed since this backup was created:");
+
+            foreach (var item in changedDestinations)
             {
-                continue;
+                details.Add(string.Empty);
+                details.Add($"Target:   {item.CurrentTarget!.Name}");
+                details.Add($"Previous: {item.ManifestEntry.Source}");
+                details.Add($"Current:  {item.CurrentTarget.Source}");
             }
-
-            if (string.Equals(manifestEntry.Source, currentTarget.Source, ConsoleHelper.GetPathComparison()))
-            {
-                continue;
-            }
-
-            if (!sourceChanged)
-            {
-                SystemConsole.WriteLine();
-                SystemConsole.WriteLine("The following destinations have changed since this backup was created:");
-
-                sourceChanged = true;
-            }
-
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine($"Target:   {currentTarget.Name}");
-            SystemConsole.WriteLine($"Previous: {manifestEntry.Source}");
-            SystemConsole.WriteLine($"Current:  {currentTarget.Source}");
         }
 
-        SystemConsole.WriteLine();
-        SystemConsole.Write("Continue with the restore? [y/N]: ");
+        details.Add(string.Empty);
+        details.Add("Continue with the restore?");
 
-        var input = SystemConsole.ReadLine();
-
-        return string.Equals(
-            input?.Trim(),
-            "y",
-            StringComparison.OrdinalIgnoreCase
+        var result = ConsoleMenu.Select(
+            "Restore Confirmation",
+            new List<ConsoleMenuItem<bool>>
+            {
+                new("n", "No, cancel the restore", false),
+                new("y", "Yes, continue with the restore", true)
+            }.AsReadOnly(),
+            string.Join(
+                Environment.NewLine,
+                details
+            )
         );
+
+        return !result.IsCancelled && result.Value;
     }
 
     /// <summary>
@@ -314,35 +299,20 @@ internal sealed class RestoreWorkflow
     /// <returns>The user's selected pre-restore backup action.</returns>
     private static PreRestoreBackupChoice PromptForPreRestoreBackup()
     {
-        while (true)
-        {
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("A safety backup can preserve the current data before it is overwritten.");
-            SystemConsole.Write("Create a backup before restoring? [Y/n/cancel]: ");
-
-            var input = SystemConsole.ReadLine()?.Trim();
-
-            if (string.IsNullOrEmpty(input)
-                || string.Equals(input, "y", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(input, "yes", StringComparison.OrdinalIgnoreCase))
+        var result = ConsoleMenu.Select(
+            "Pre-restore Safety Backup",
+            new List<ConsoleMenuItem<PreRestoreBackupChoice>>
             {
-                return PreRestoreBackupChoice.Create;
-            }
+                new("y", "Create a safety backup before restoring", PreRestoreBackupChoice.Create),
+                new("n", "Continue without creating a safety backup", PreRestoreBackupChoice.Skip),
+                new("c", "Cancel the restore", PreRestoreBackupChoice.Cancel, IsCancellation: true)
+            }.AsReadOnly(),
+            "A safety backup can preserve the current data before it is overwritten."
+        );
 
-            if (string.Equals(input, "n", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(input, "no", StringComparison.OrdinalIgnoreCase))
-            {
-                return PreRestoreBackupChoice.Skip;
-            }
-
-            if (string.Equals(input, "c", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(input, "cancel", StringComparison.OrdinalIgnoreCase))
-            {
-                return PreRestoreBackupChoice.Cancel;
-            }
-
-            ConsoleHelper.ShowInvalidSelectionMessage();
-        }
+        return result.IsCancelled
+            ? PreRestoreBackupChoice.Cancel
+            : result.Value;
     }
 
     /// <summary>
@@ -388,6 +358,22 @@ internal sealed class RestoreWorkflow
     #endregion
 
     #region Display Helpers
+
+    /// <summary>
+    /// Creates the compact label displayed for one completed backup.
+    /// </summary>
+    private static string CreateBackupDisplayLabel(BackupDescriptor backup)
+    {
+        var createdLocal = backup.Manifest.CreatedUtc.ToLocalTime();
+        var fileCount = backup.Manifest.Entries.Sum(entry => entry.FileCount);
+        var totalBytes = backup.Manifest.Entries.Sum(entry => entry.TotalBytes);
+        var fileLabel = fileCount == 1
+            ? "file"
+            : "files";
+
+        return $"{createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+               $"{fileCount} {fileLabel}, {totalBytes} bytes";
+    }
 
     /// <summary>
     /// Gets the user-facing label for a backup kind.

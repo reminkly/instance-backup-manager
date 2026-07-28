@@ -1,4 +1,5 @@
 using InstanceBackupManager.Console.Constants;
+using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Catalogs;
@@ -65,37 +66,27 @@ internal sealed class BackupMaintenanceWorkflow
 
         try
         {
-            while (true)
-            {
-                SystemConsole.WriteLine();
-                SystemConsole.WriteLine("Backup Management");
-                SystemConsole.WriteLine("=================");
-                SystemConsole.WriteLine();
-                SystemConsole.WriteLine("1. Delete one backup");
-                SystemConsole.WriteLine("2. Delete all backups");
-                SystemConsole.WriteLine("0. Return");
-                SystemConsole.WriteLine();
-                SystemConsole.Write(ConsoleMessages.SelectionPrompt);
-
-                var input = SystemConsole.ReadLine();
-
-                switch (input?.Trim())
+            var selection = ConsoleMenu.Select(
+                "Backup Management",
+                new List<ConsoleMenuItem<int>>
                 {
-                    case "0":
-                    case null:
-                        return 0;
+                    new("1", "Delete one backup", 1),
+                    new("2", "Delete all backups", 2),
+                    new("0", "Return", 0, IsCancellation: true)
+                }.AsReadOnly()
+            );
 
-                    case "1":
-                        return DeleteOneBackup(instance);
-
-                    case "2":
-                        return DeleteAllBackups(instance);
-
-                    default:
-                        ConsoleHelper.ShowInvalidSelectionMessage();
-                        break;
-                }
+            if (selection.IsCancelled)
+            {
+                return 0;
             }
+
+            return selection.Value switch
+            {
+                1 => DeleteOneBackup(instance),
+                2 => DeleteAllBackups(instance),
+                _ => 0
+            };
         }
         catch (Exception exception)
         {
@@ -171,51 +162,35 @@ internal sealed class BackupMaintenanceWorkflow
     /// <returns>The selected backup, or <see langword="null"/> when the user chooses to return.</returns>
     private static BackupDescriptor? PromptForBackup(IReadOnlyList<BackupDescriptor> backups)
     {
-        while (true)
-        {
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Completed Backups");
-            SystemConsole.WriteLine("=================");
-            SystemConsole.WriteLine();
+        var items = backups
+            .Select(
+                (backup, index) => new ConsoleMenuItem<BackupDescriptor?>(
+                    index < 9
+                        ? (index + 1).ToString()
+                        : null,
+                    CreateBackupDisplayLabel(backup),
+                    backup
+                )
+            )
+            .Append(
+                new ConsoleMenuItem<BackupDescriptor?>(
+                    "0",
+                    "Return",
+                    Value: null,
+                    IsCancellation: true
+                )
+            )
+            .ToList()
+            .AsReadOnly();
 
-            for (var index = 0; index < backups.Count; index++)
-            {
-                DisplayBackupListEntry(
-                    backups[index],
-                    index + 1
-                );
-            }
+        var result = ConsoleMenu.Select(
+            "Completed Backups",
+            items
+        );
 
-            SystemConsole.WriteLine("0. Return");
-            SystemConsole.WriteLine();
-            SystemConsole.Write(ConsoleMessages.SelectionPrompt);
-
-            var input = SystemConsole.ReadLine();
-
-            if (input is null)
-            {
-                return null;
-            }
-
-            if (!int.TryParse(input, out var selection))
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            if (selection == 0)
-            {
-                return null;
-            }
-
-            if (selection < 1 || selection > backups.Count)
-            {
-                ConsoleHelper.ShowInvalidSelectionMessage();
-                continue;
-            }
-
-            return backups[selection - 1];
-        }
+        return result.IsCancelled
+            ? null
+            : result.Value;
     }
 
     /// <summary>
@@ -228,27 +203,29 @@ internal sealed class BackupMaintenanceWorkflow
         var createdLocal = backup.Manifest.CreatedUtc.ToLocalTime();
         var fileCount = backup.Manifest.Entries.Sum(entry => entry.FileCount);
         var totalBytes = backup.Manifest.Entries.Sum(entry => entry.TotalBytes);
-
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Delete Backup");
-        SystemConsole.WriteLine("=============");
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine($"Backup:  {backup.BackupName}");
-        SystemConsole.WriteLine($"Kind:    {GetBackupKindDisplayName(backup.Manifest.Kind)}");
-        SystemConsole.WriteLine($"Created: {createdLocal:yyyy-MM-dd HH:mm:ss}");
-        SystemConsole.WriteLine($"Files:   {fileCount}");
-        SystemConsole.WriteLine($"Bytes:   {totalBytes}");
-        SystemConsole.WriteLine($"Path:    {backup.BackupPath}");
-        SystemConsole.WriteLine();
-        SystemConsole.Write("Delete this backup? [y/N]: ");
-
-        var input = SystemConsole.ReadLine();
-
-        return string.Equals(
-            input?.Trim(),
-            "y",
-            StringComparison.OrdinalIgnoreCase
+        var details = string.Join(
+            Environment.NewLine,
+            $"Backup:  {backup.BackupName}",
+            $"Kind:    {GetBackupKindDisplayName(backup.Manifest.Kind)}",
+            $"Created: {createdLocal:yyyy-MM-dd HH:mm:ss}",
+            $"Files:   {fileCount}",
+            $"Bytes:   {totalBytes}",
+            $"Path:    {backup.BackupPath}",
+            string.Empty,
+            "Delete this backup?"
         );
+
+        var result = ConsoleMenu.Select(
+            "Delete Backup",
+            new List<ConsoleMenuItem<bool>>
+            {
+                new("n", "No, keep this backup", false),
+                new("y", "Yes, permanently delete it", true)
+            }.AsReadOnly(),
+            details
+        );
+
+        return !result.IsCancelled && result.Value;
     }
 
     #endregion
@@ -366,6 +343,24 @@ internal sealed class BackupMaintenanceWorkflow
     #endregion
 
     #region Display Helpers
+
+    /// <summary>
+    /// Creates the compact label displayed for one completed backup.
+    /// </summary>
+    /// <param name="backup">The completed backup to describe.</param>
+    /// <returns>A user-facing backup label.</returns>
+    private static string CreateBackupDisplayLabel(BackupDescriptor backup)
+    {
+        var createdLocal = backup.Manifest.CreatedUtc.ToLocalTime();
+        var fileCount = backup.Manifest.Entries.Sum(entry => entry.FileCount);
+        var totalBytes = backup.Manifest.Entries.Sum(entry => entry.TotalBytes);
+        var fileLabel = fileCount == 1
+            ? "file"
+            : "files";
+
+        return $"{createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+               $"{fileCount} {fileLabel}, {totalBytes} bytes";
+    }
 
     /// <summary>
     /// Displays one numbered completed-backup entry.
