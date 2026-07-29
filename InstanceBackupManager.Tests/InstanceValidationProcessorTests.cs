@@ -71,8 +71,7 @@ public sealed class InstanceValidationProcessorTests
                     Id = "save",
                     Name = "Save",
                     Source = sourcePath,
-                    Type = TargetPathType.File,
-                    BackupPath = "saves/save.dat"
+                    Type = TargetPathType.File
                 }
             )
         );
@@ -98,8 +97,7 @@ public sealed class InstanceValidationProcessorTests
                         _testRootPath,
                         "missing.dat"
                     ),
-                    Type = TargetPathType.File,
-                    BackupPath = "saves/save.dat"
+                    Type = TargetPathType.File
                 }
             )
         );
@@ -126,8 +124,7 @@ public sealed class InstanceValidationProcessorTests
                         _testRootPath,
                         "missing.dat"
                     ),
-                    Type = TargetPathType.File,
-                    BackupPath = "saves/save.dat"
+                    Type = TargetPathType.File
                 }
             )
         );

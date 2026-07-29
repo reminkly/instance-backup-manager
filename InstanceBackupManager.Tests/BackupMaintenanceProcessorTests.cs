@@ -555,8 +555,7 @@ public sealed class BackupMaintenanceProcessorTests
             Required = true,
             AllowClear = false,
             Source = source,
-            Type = type,
-            BackupPath = backupPath
+            Type = type
         };
     }
 

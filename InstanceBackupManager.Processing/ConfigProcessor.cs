@@ -1,8 +1,11 @@
 using InstanceBackupManager.Processing.Configuration;
 using InstanceBackupManager.Processing.Constants;
 using InstanceBackupManager.Processing.Enums;
+using InstanceBackupManager.Processing.Exceptions;
+using InstanceBackupManager.Processing.Migrations;
 using InstanceBackupManager.Processing.Models.Configuration;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Utilities;
 
 namespace InstanceBackupManager.Processing;
 
@@ -27,6 +30,11 @@ public sealed class ConfigProcessor
     /// Gets the service used to validate instance configurations.
     /// </summary>
     private InstanceConfigValidator InstanceConfigValidator { get; }
+
+    /// <summary>
+    /// Gets the pipeline used to upgrade older configuration documents.
+    /// </summary>
+    private InstanceConfigMigrationPipeline InstanceConfigMigrationPipeline { get; }
 
     #endregion
 
@@ -64,6 +72,7 @@ public sealed class ConfigProcessor
         InstanceDiscoveryService = instanceDiscoveryService;
         InstanceConfigSerializer = instanceConfigSerializer;
         InstanceConfigValidator = instanceConfigValidator;
+        InstanceConfigMigrationPipeline = new InstanceConfigMigrationPipeline();
     }
 
     #endregion
@@ -113,12 +122,16 @@ public sealed class ConfigProcessor
             BackupStorageConstants.InstanceConfigurationFileName
         );
 
-        var backupsPath = Path.Combine(
-            fullInstancePath,
-            BackupStorageConstants.BackupsDirectoryName
-        );
-
         var config = LoadConfig(configPath);
+
+        if (config.SchemaVersion != BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion)
+        {
+            throw new UnsupportedInstanceConfigurationSchemaException(
+                configPath,
+                config.SchemaVersion,
+                BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion
+            );
+        }
 
         var validationErrors = ValidateConfig(
             config,
@@ -132,6 +145,11 @@ public sealed class ConfigProcessor
                 string.Join(Environment.NewLine, validationErrors)
             );
         }
+
+        var backupsPath = PathResolver.ResolveConfiguredPath(
+            config.BackupRoot,
+            fullInstancePath
+        );
 
         Directory.CreateDirectory(backupsPath);
 
@@ -152,6 +170,108 @@ public sealed class ConfigProcessor
     public InstanceConfig LoadConfig(string configPath)
     {
         return InstanceConfigSerializer.Load(configPath);
+    }
+
+    /// <summary>
+    /// Determines whether the selected configuration has a complete registered migration path to the current schema.
+    /// </summary>
+    /// <param name="configuredVersion">The schema version currently used by the configuration.</param>
+    /// <returns><see langword="true"/> when every required migration step is registered; otherwise, <see langword="false"/>.</returns>
+    public bool CanUpgradeConfig(int configuredVersion)
+    {
+        return InstanceConfigMigrationPipeline.CanMigrate(
+            configuredVersion,
+            BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion
+        );
+    }
+
+    /// <summary>
+    /// Migrates an older configuration to the current schema after validating the result and preserves the original file.
+    /// </summary>
+    /// <param name="configPath">The path of the configuration to upgrade.</param>
+    /// <returns>Paths and versions describing the completed upgrade.</returns>
+    public ConfigurationUpgradeResult UpgradeConfig(string configPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configPath);
+
+        var fullConfigPath = Path.GetFullPath(configPath);
+        var instancePath = Path.GetDirectoryName(fullConfigPath)
+            ?? throw new InvalidDataException(
+                $"Configuration path '{fullConfigPath}' does not have a parent directory."
+            );
+
+        var currentConfig = LoadConfig(fullConfigPath);
+        var targetVersion = BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion;
+
+        if (!CanUpgradeConfig(currentConfig.SchemaVersion))
+        {
+            throw new InvalidOperationException(
+                $"No complete configuration migration path exists from schema version '{currentConfig.SchemaVersion}' to '{targetVersion}'."
+            );
+        }
+
+        var migratedJson = InstanceConfigMigrationPipeline.Migrate(
+            File.ReadAllText(fullConfigPath),
+            currentConfig.SchemaVersion,
+            targetVersion
+        );
+
+        var migratedConfig = InstanceConfigSerializer.Deserialize(
+            migratedJson,
+            fullConfigPath
+        );
+
+        var validationErrors = ValidateConfig(
+            migratedConfig,
+            instancePath
+        );
+
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"The upgraded configuration failed validation:{Environment.NewLine}" +
+                string.Join(Environment.NewLine, validationErrors)
+            );
+        }
+
+        var backupPath = GetAvailableUpgradeBackupPath(
+            instancePath,
+            currentConfig.SchemaVersion
+        );
+
+        var temporaryPath = Path.Combine(
+            instancePath,
+            $".{BackupStorageConstants.InstanceConfigurationFileName}.{Guid.NewGuid():N}.tmp"
+        );
+
+        try
+        {
+            File.WriteAllText(
+                temporaryPath,
+                migratedJson
+            );
+
+            File.Replace(
+                temporaryPath,
+                fullConfigPath,
+                backupPath
+            );
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+
+        return new ConfigurationUpgradeResult
+        {
+            ConfigPath = fullConfigPath,
+            BackupPath = backupPath,
+            PreviousVersion = currentConfig.SchemaVersion,
+            CurrentVersion = targetVersion
+        };
     }
 
     /// <summary>
@@ -229,6 +349,35 @@ public sealed class ConfigProcessor
 
     #endregion
 
+    #region Configuration Upgrades
+
+    /// <summary>
+    /// Finds a non-conflicting filename for the unchanged pre-upgrade configuration.
+    /// </summary>
+    private static string GetAvailableUpgradeBackupPath(
+        string instancePath,
+        int schemaVersion
+    )
+    {
+        var baseFileName = $"instance.schema-v{schemaVersion}.backup";
+        var candidatePath = Path.Combine(
+            instancePath,
+            baseFileName + ".json"
+        );
+
+        for (var suffix = 2; File.Exists(candidatePath); suffix++)
+        {
+            candidatePath = Path.Combine(
+                instancePath,
+                $"{baseFileName}-{suffix}.json"
+            );
+        }
+
+        return candidatePath;
+    }
+
+    #endregion
+
     #region Skeleton Configuration
 
     /// <summary>
@@ -242,6 +391,7 @@ public sealed class ConfigProcessor
         {
             SchemaVersion = BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion,
             Name = instanceName,
+            BackupRoot = BackupStorageConstants.BackupsDirectoryName,
             Retention = new RetentionSettings
             {
                 ManualBackupsToKeep = null,
@@ -258,7 +408,6 @@ public sealed class ConfigProcessor
                     AllowClear = false,
                     Source = "replace-with-source-path",
                     Type = TargetPathType.File,
-                    BackupPath = "files/replace-with-file-name"
                 }
             ]
         };

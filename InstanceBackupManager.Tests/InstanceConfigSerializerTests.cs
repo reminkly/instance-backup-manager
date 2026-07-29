@@ -119,7 +119,6 @@ public sealed class InstanceConfigSerializerTests
 
         Assert.AreEqual("Test Instance", config.Name);
         Assert.AreEqual(TargetPathType.File, target.Type);
-        Assert.AreEqual("save/save.dat", target.BackupPath);
     }
 
     #endregion
@@ -165,7 +164,6 @@ public sealed class InstanceConfigSerializerTests
 
         Assert.AreEqual(expected.Name, actual.Name);
         Assert.AreEqual(TargetPathType.File, target.Type);
-        Assert.AreEqual("save/save.dat", target.BackupPath);
     }
 
     /// <summary>
@@ -229,8 +227,7 @@ public sealed class InstanceConfigSerializerTests
                     Required = true,
                     AllowClear = false,
                     Source = "save.dat",
-                    Type = TargetPathType.File,
-                    BackupPath = "save/save.dat"
+                    Type = TargetPathType.File
                 }
             ]
         };

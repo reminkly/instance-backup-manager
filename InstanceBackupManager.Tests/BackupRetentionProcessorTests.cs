@@ -450,8 +450,7 @@ public sealed class BackupRetentionProcessorTests
             Required = true,
             AllowClear = false,
             Source = _sourcePath,
-            Type = TargetPathType.Directory,
-            BackupPath = "data"
+            Type = TargetPathType.Directory
         };
     }
 

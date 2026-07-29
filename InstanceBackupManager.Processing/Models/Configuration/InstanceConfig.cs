@@ -13,12 +13,20 @@ public sealed class InstanceConfig
     /// <remarks>
     /// The schema version allows future releases to detect, reject, or migrate older configuration formats.
     /// </remarks>
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
 
     /// <summary>
     /// Gets the user-facing name displayed for the instance.
     /// </summary>
     public required string Name { get; init; }
+
+    /// <summary>
+    /// Gets the root directory containing timestamped backups for this instance.
+    /// </summary>
+    /// <remarks>
+    /// Relative paths are resolved from the instance directory. Absolute paths allow portable configuration data to use external storage.
+    /// </remarks>
+    public string BackupRoot { get; init; } = "backups";
 
     /// <summary>
     /// Gets a value indicating whether the instance is available for backup, restore, and other supported operations.

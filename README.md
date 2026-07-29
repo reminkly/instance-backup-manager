@@ -2,7 +2,7 @@
 
 Instance Backup Manager is a portable console application for backing up, restoring, clearing, and managing files associated with emulators, ROM hacks, games, documents, and other configurable applications.
 
-Each managed item is represented by an instance directory containing an `instance.json` configuration file and a `backups` directory.
+Each managed item is represented by an instance directory containing an `instance.json` configuration file. Backups default to a `backups` directory inside the instance, but each instance may instead use another relative directory or an absolute external storage path.
 
 ## Features
 
@@ -11,6 +11,8 @@ Each managed item is represented by an instance directory containing an `instanc
 - Guided creation of new instance directories and skeleton configurations
 - Individual file and complete-directory targets
 - Multiple targets per instance
+- Automatic, collision-resistant payload paths derived from target IDs
+- Per-instance relative or absolute backup storage roots
 - Optional and required source paths
 - Per-target enable and clear settings
 - Timestamped backups with optional user-facing names and manifests
@@ -21,12 +23,13 @@ Each managed item is represented by an instance directory containing an `instanc
 - Keyboard-driven menus with highlighted selection and shortcut keys
 - Non-mutating instance, target, and backup validation
 - Daily command activity logs
+- Best-effort startup and on-demand checks for newer GitHub releases
 - Protection against unsafe paths, overlapping targets, symbolic links, and junctions
 - Configuration and manifest schema validation
 
 ## Portable Folder Structure
 
-Place the published executable wherever you want the application and its backups to reside.
+Place the published executable wherever you want the application and its default backups to reside.
 
 ```text
 InstanceBackupManager.exe
@@ -37,18 +40,16 @@ Instances/
 ├── BizHawk - Minish Cap/
 │   ├── instance.json
 │   └── backups/
-│       ├── 2026-07-28_13-21-39/
-│       │   ├── manifest.json
-│       │   └── saves/
-│       └── 2026-07-28_13-25-38/
+│       └── 2026-07-28_13-21-39/
 │           ├── manifest.json
-│           └── saves/
+│           └── targets/
+│               └── save-ram/
+│                   └── Legend of Zelda.SaveRAM
 └── Documents/
-    ├── instance.json
-    └── backups/
+    └── instance.json
 ```
 
-The `Instances` directory is created beside the executable. Each immediate subdirectory represents one independently configurable instance.
+The `Instances` directory is created beside the executable. Each immediate subdirectory represents one independently configurable instance. The default `BackupRoot` value is `backups`, which resolves inside that instance directory. An absolute `BackupRoot` may place the backup collection on another local drive or storage location.
 
 ## Creating an Instance
 
@@ -69,9 +70,10 @@ A complete example is available at [`examples/instance.example.json`](examples/i
 
 ```json
 {
-  "SchemaVersion": 1,
+  "SchemaVersion": 2,
   "Name": "Example Emulator",
   "Enabled": true,
+  "BackupRoot": "backups",
   "Retention": {
     "ManualBackupsToKeep": 10,
     "PreRestoreBackupsToKeep": 5
@@ -84,8 +86,7 @@ A complete example is available at [`examples/instance.example.json`](examples/i
       "Required": true,
       "AllowClear": true,
       "Source": "C:\\Path\\To\\Game.SaveRAM",
-      "Type": "file",
-      "BackupPath": "saves/Game.SaveRAM"
+      "Type": "file"
     },
     {
       "Id": "mods",
@@ -94,8 +95,7 @@ A complete example is available at [`examples/instance.example.json`](examples/i
       "Required": false,
       "AllowClear": false,
       "Source": "C:\\Path\\To\\Mods",
-      "Type": "directory",
-      "BackupPath": "mods"
+      "Type": "directory"
     }
   ]
 }
@@ -109,9 +109,10 @@ Configuration property names are case-insensitive. JSON comments and trailing co
 
 | Property | Type | Description |
 |---|---|---|
-| `SchemaVersion` | Integer | Configuration schema version. The current supported version is `1`. |
+| `SchemaVersion` | Integer | Configuration schema version. The current supported version is `2`. |
 | `Name` | String | User-facing instance name shown by the application. |
 | `Enabled` | Boolean | Determines whether the instance can participate in operations. |
+| `BackupRoot` | String | Root directory containing this instance’s backup directories. Environment variables are expanded. Relative paths resolve from the instance directory; absolute paths allow external storage. |
 | `Retention` | Object or `null` | Optional per-kind retention settings. Missing or `null` means unlimited retention. |
 | `Targets` | Array | Files and directories managed by the instance. |
 
@@ -137,15 +138,39 @@ Manual retention runs after a successful manual backup. Pre-restore retention ru
 | `AllowClear` | Boolean | Explicitly permits the target to participate in Clear operations. |
 | `Source` | String | Source file or directory. Environment variables are expanded. Relative paths are resolved from the instance directory. |
 | `Type` | String | Either `file` or `directory`. |
-| `BackupPath` | String | Relative location used to store the target inside each backup. |
 
-Target IDs and backup paths must be unique and non-overlapping within an instance.
+Target IDs must be unique. Each target is stored automatically beneath `targets/<target-id>` in a backup. A file target retains its original filename, while a directory target retains the complete relative structure of its contents, including empty directories.
+
+## Updating Version 1 Configurations
+
+Configuration schema version 2 replaces each target’s manually configured `BackupPath` with an instance-level `BackupRoot`. When a version-1 instance is selected, the application displays the current and supported schema versions and offers to back up and upgrade the configuration.
+
+The upgrade:
+
+1. Preserves the original as `instance.schema-v1.backup.json`. A numeric suffix is added rather than overwriting an existing upgrade backup.
+2. Runs every registered version-to-version migration needed to reach the current schema.
+3. Changes `SchemaVersion` from `1` to `2`.
+4. Adds `"BackupRoot": "backups"` at the instance level.
+5. Removes `BackupPath` from every target while preserving its other settings.
+6. Validates the migrated configuration before replacing the active file.
+
+If transformation or validation fails, the active configuration remains unchanged. The user can also return to instance selection or reveal the configuration in Explorer without upgrading it.
+
+Existing backup directories do not need to be moved when `BackupRoot` remains `backups`. Existing schema-version-1 manifests remain supported because each manifest records the exact stored payload path used when that backup was created.
 
 ## Operations
 
+### Check for updates
+
+The application performs a best-effort release check during startup. Startup remains quiet when the installed version is current, and network or GitHub failures never prevent access to local backup operations. When a newer stable release exists, the application displays the installed and latest versions and offers to open the release page.
+
+Select **Check for updates** from the application-level instance menu to run the same check manually. Manual checks report whether the application is current and display recoverable network or response errors.
+
+Release information is read from the public GitHub Releases API for `reminkly/instance-backup-manager`. No Git installation, GitHub CLI, authentication token, or repository checkout is required. The application does not download or replace its own executable; the user reviews and downloads the published release through GitHub.
+
 ### Back up now
 
-Creates a timestamped backup containing every enabled target. The application prompts for an optional user-facing backup name. Leaving the name blank creates a timestamped name automatically.
+Creates a timestamped backup beneath the configured `BackupRoot` containing every enabled target. The application prompts for an optional user-facing backup name. Leaving the name blank creates a timestamped name automatically.
 
 Backup names are presentation metadata and do not change the timestamped directory used to store the backup. Names are trimmed, limited to 100 characters, and cannot contain line breaks or other control characters.
 
@@ -265,12 +290,11 @@ A manifest describes what was captured. Restoration always uses the current conf
 
 Instance Backup Manager rejects or protects against:
 
-- Filesystem roots used as Clear targets
+- Filesystem roots used as Clear targets or backup roots
 - Instance directories used as Clear targets
-- Source paths overlapping the backups directory
-- Backup paths escaping through parent traversal
-- Duplicate target IDs
-- Overlapping target backup paths
+- Source paths overlapping the configured backup root
+- Relative backup roots escaping the instance directory through parent traversal
+- Duplicate or filesystem-unsafe target IDs
 - Overlapping Clear targets
 - Unsupported target or backup kinds
 - Symbolic links, junctions, and other reparse points
@@ -294,7 +318,9 @@ The implementation uses several focused design patterns:
 - **Command:** Instance-menu actions implement a common command contract, allowing the menu to display and dispatch available operations without depending directly on every workflow.
 - **Decorator:** Logging wraps instance commands without adding logging responsibilities to each command or workflow.
 - **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, skeleton creation, and runtime-context creation.
-- **Application service:** `InstanceCreationProcessor` validates names and safely coordinates creation of new instance directories and skeleton configurations.
+- **Migration pipeline:** Configuration migrations are registered as discrete source-to-target version steps. The pipeline discovers and executes a complete chain, allowing a future version-1 configuration to advance through version 2 and then version 3 without hardcoding that sequence into the console workflow.
+- **Application services:** `InstanceCreationProcessor` validates names and safely coordinates creation of new instance directories and skeleton configurations. `UpdateProcessor` compares the installed application version with provider-independent release metadata.
+- **Provider adapter:** `GitHubReleaseSource` implements `IReleaseSource` and translates the GitHub Releases API response into the application’s release model.
 - **Repository:** `BackupCatalog` owns discovery and validated loading of completed backups.
 - **Strategy:** File and directory targets use separate backup, restore, and clear algorithms selected by target type.
 - **Policy utilities:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules. `BackupDisplayNamePolicy` centralizes backup-name generation, normalization, validation, and backward-compatible display.
@@ -324,7 +350,7 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-Tests cover configuration processing, instance creation and selection, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
+Tests cover configuration processing, schema-update guidance, relative and external backup roots, instance creation and selection, GitHub release discovery and version comparison, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
 
 ## Development Workflow
 

@@ -4,7 +4,7 @@ using InstanceBackupManager.Processing.Models.Instances;
 namespace InstanceBackupManager.Tests;
 
 /// <summary>
-/// Tests redirected selection of existing instances, creation, and exit from the application-level instance menu.
+/// Tests redirected selection of existing instances, creation, update checks, and exit from the application-level menu.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -46,19 +46,33 @@ public sealed class InstanceSelectionMenuTests
     {
         SetConsoleInput("n");
 
-        var result = InstanceSelectionMenu.Select(
-            Array.Empty<InstanceDescriptor>()
-        );
+        var result = InstanceSelectionMenu.Select(Array.Empty<InstanceDescriptor>());
 
         Assert.IsFalse(result.IsCancelled);
-        Assert.IsNull(result.Value);
+        Assert.AreEqual(ApplicationMenuAction.CreateInstance, result.Value!.Action);
+        Assert.IsNull(result.Value.Instance);
     }
 
     /// <summary>
-    /// Verifies that the numeric shortcut returns the selected existing instance.
+    /// Verifies that the update shortcut returns an explicit update-check action.
     /// </summary>
     [TestMethod]
-    public void Select_WhenExistingInstanceIsSelected_ReturnsInstance()
+    public void Select_WhenUpdateIsSelected_ReturnsUpdateAction()
+    {
+        SetConsoleInput("u");
+
+        var result = InstanceSelectionMenu.Select(Array.Empty<InstanceDescriptor>());
+
+        Assert.IsFalse(result.IsCancelled);
+        Assert.AreEqual(ApplicationMenuAction.CheckForUpdates, result.Value!.Action);
+        Assert.IsNull(result.Value.Instance);
+    }
+
+    /// <summary>
+    /// Verifies that the numeric shortcut returns an open-instance action containing the selected instance.
+    /// </summary>
+    [TestMethod]
+    public void Select_WhenExistingInstanceIsSelected_ReturnsInstanceAction()
     {
         var instance = new InstanceDescriptor
         {
@@ -77,7 +91,8 @@ public sealed class InstanceSelectionMenuTests
         );
 
         Assert.IsFalse(result.IsCancelled);
-        Assert.AreSame(instance, result.Value);
+        Assert.AreEqual(ApplicationMenuAction.OpenInstance, result.Value!.Action);
+        Assert.AreSame(instance, result.Value.Instance);
     }
 
     /// <summary>
@@ -88,9 +103,7 @@ public sealed class InstanceSelectionMenuTests
     {
         SetConsoleInput("0");
 
-        var result = InstanceSelectionMenu.Select(
-            Array.Empty<InstanceDescriptor>()
-        );
+        var result = InstanceSelectionMenu.Select(Array.Empty<InstanceDescriptor>());
 
         Assert.IsTrue(result.IsCancelled);
         Assert.IsNull(result.Value);

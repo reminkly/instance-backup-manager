@@ -259,8 +259,21 @@ public sealed class BackupProcessor
             );
         }
 
+        var payloadPath = Path.Combine(
+            BackupStorageConstants.TargetsDirectoryName,
+            target.Id
+        );
+
+        if (target.Type == TargetPathType.File)
+        {
+            payloadPath = Path.Combine(
+                payloadPath,
+                Path.GetFileName(sourcePath)
+            );
+        }
+
         var destinationPath = Path.GetFullPath(
-            target.BackupPath,
+            payloadPath,
             temporaryBackupPath
         );
 
@@ -281,7 +294,7 @@ public sealed class BackupProcessor
             TargetName = target.Name,
             Source = target.Source,
             Type = target.Type,
-            BackupPath = target.BackupPath,
+            BackupPath = payloadPath,
             FileCount = statistics.FileCount,
             TotalBytes = statistics.TotalBytes
         };

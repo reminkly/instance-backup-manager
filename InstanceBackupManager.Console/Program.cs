@@ -4,6 +4,7 @@ using InstanceBackupManager.Console.Menus;
 using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Catalogs;
+using InstanceBackupManager.Processing.Updates;
 
 namespace InstanceBackupManager.Console;
 
@@ -18,13 +19,32 @@ internal static class Program
     /// Creates and starts the console application.
     /// </summary>
     /// <returns>Zero when the application exits normally; otherwise, one.</returns>
-    private static int Main()
+    private static async Task<int> Main()
     {
         var applicationPath = AppContext.BaseDirectory;
         var logger = new FileApplicationLogger(
             Path.Combine(
                 applicationPath,
                 "logs"
+            )
+        );
+
+        using var httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        var installedVersion = typeof(Program).Assembly.GetName().Version
+            ?? new Version(0, 0, 0);
+
+        var updateWorkflow = new UpdateWorkflow(
+            new UpdateProcessor(
+                installedVersion,
+                new GitHubReleaseSource(
+                    httpClient,
+                    "reminkly",
+                    "instance-backup-manager"
+                )
             )
         );
 
@@ -101,11 +121,13 @@ internal static class Program
 
         var application = new ConsoleApplication(
             configProcessor,
+            new ConfigurationUpdateWorkflow(configProcessor),
             instanceCreationWorkflow,
-            instanceMenu
+            instanceMenu,
+            updateWorkflow
         );
 
-        return application.Run();
+        return await application.RunAsync();
     }
 
     #endregion

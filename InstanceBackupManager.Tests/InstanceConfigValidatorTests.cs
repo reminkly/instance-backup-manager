@@ -91,7 +91,7 @@ public sealed class InstanceConfigValidatorTests
     {
         var config = new InstanceConfig
         {
-            SchemaVersion = 2,
+            SchemaVersion = 1,
             Name = "Test Instance",
             Targets = []
         };
@@ -107,13 +107,9 @@ public sealed class InstanceConfigValidatorTests
     [TestMethod]
     public void ValidateConfig_WhenTargetIdsDifferOnlyByCase_ReturnsValidationError()
     {
-        var firstTarget = CreateValidTarget(
-            id: "saves",
-            backupPath: "saves");
+        var firstTarget = CreateValidTarget(id: "saves");
 
-        var secondTarget = CreateValidTarget(
-            id: "SAVES",
-            backupPath: "other-saves");
+        var secondTarget = CreateValidTarget(id: "SAVES");
 
         var config = new InstanceConfig
         {
@@ -293,99 +289,61 @@ public sealed class InstanceConfigValidatorTests
 
     #endregion
 
-    #region Backup Path Validation Tests
+    #region Backup Root Validation Tests
 
     /// <summary>
-    /// Verifies that an absolute backup path produces a validation error.
+    /// Verifies that an absolute backup root is supported for external storage.
     /// </summary>
     [TestMethod]
-    public void ValidateConfig_WhenBackupPathIsRooted_ReturnsValidationError()
+    public void ValidateConfig_WhenBackupRootIsAbsolute_ReturnsNoBackupRootError()
     {
-        var rootedBackupPath = Path.Combine(
-            Path.GetPathRoot(Path.GetFullPath(_testRootPath))!,
-            "UnsafeBackup");
-
-        var target = CreateValidTarget(backupPath: rootedBackupPath);
-
-        var config = new InstanceConfig
+        var config = CreateValidConfig();
+        config = new InstanceConfig
         {
-            Name = "Test Instance",
-            Targets = [target]
+            Name = config.Name,
+            BackupRoot = Path.Combine(_testRootPath, "External Backups"),
+            Targets = config.Targets
         };
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "rooted backup path");
+        Assert.IsFalse(errors.Any(error => error.Contains("backup root", StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>
-    /// Verifies that a backup path containing parent traversal produces a validation error.
+    /// Verifies that a relative backup root cannot escape the instance directory.
     /// </summary>
     [TestMethod]
-    public void ValidateConfig_WhenBackupPathEscapesBackupDirectory_ReturnsValidationError()
+    public void ValidateConfig_WhenRelativeBackupRootEscapesInstance_ReturnsValidationError()
     {
-        var target = CreateValidTarget(
-            backupPath: Path.Combine("..", "escaped"));
-
         var config = new InstanceConfig
         {
             Name = "Test Instance",
-            Targets = [target]
+            BackupRoot = Path.Combine("..", "External Backups"),
+            Targets = [CreateValidTarget()]
         };
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "unsafe backup path");
+        AssertContainsError(errors, "relative backup root");
     }
 
     /// <summary>
-    /// Verifies that two targets cannot use the same backup destination.
+    /// Verifies that a filesystem root cannot be used as the backup root.
     /// </summary>
     [TestMethod]
-    public void ValidateConfig_WhenBackupPathsAreEqual_ReturnsValidationError()
+    public void ValidateConfig_WhenBackupRootIsFilesystemRoot_ReturnsValidationError()
     {
-        var firstTarget = CreateValidTarget(
-            id: "saves",
-            backupPath: "shared");
-
-        var secondTarget = CreateValidTarget(
-            id: "mods",
-            backupPath: "shared");
-
         var config = new InstanceConfig
         {
             Name = "Test Instance",
-            Targets = [firstTarget, secondTarget]
+            BackupRoot = Path.GetPathRoot(Path.GetFullPath(_testRootPath))!,
+            Targets = [CreateValidTarget()]
         };
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "overlapping backup paths");
-    }
-
-    /// <summary>
-    /// Verifies that one target cannot store its backup beneath another target's backup destination.
-    /// </summary>
-    [TestMethod]
-    public void ValidateConfig_WhenBackupPathIsNestedInsideAnotherBackupPath_ReturnsValidationError()
-    {
-        var firstTarget = CreateValidTarget(
-            id: "data",
-            backupPath: "data");
-
-        var secondTarget = CreateValidTarget(
-            id: "mods",
-            backupPath: Path.Combine("data", "mods"));
-
-        var config = new InstanceConfig
-        {
-            Name = "Test Instance",
-            Targets = [firstTarget, secondTarget]
-        };
-
-        var errors = _validator.Validate(config, _instancePath);
-
-        AssertContainsError(errors, "overlapping backup paths");
+        AssertContainsError(errors, "filesystem root");
     }
 
     #endregion
@@ -409,7 +367,7 @@ public sealed class InstanceConfigValidatorTests
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "overlaps the instance backups directory");
+        AssertContainsError(errors, "overlaps the configured backup root");
     }
 
     /// <summary>
@@ -428,7 +386,7 @@ public sealed class InstanceConfigValidatorTests
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "overlaps the instance backups directory");
+        AssertContainsError(errors, "overlaps the configured backup root");
     }
 
     /// <summary>
@@ -448,7 +406,7 @@ public sealed class InstanceConfigValidatorTests
 
         var errors = _validator.Validate(config, _instancePath);
 
-        AssertContainsError(errors, "overlaps the instance backups directory");
+        AssertContainsError(errors, "overlaps the configured backup root");
     }
 
     #endregion
@@ -475,14 +433,11 @@ public sealed class InstanceConfigValidatorTests
     /// Creates a valid target while allowing individual values to be overridden by a test.
     /// </summary>
     /// <param name="id">The target identifier.</param>
-    /// <param name="source">The source path, or <see langword="null"/> to use a valid default path.</param>
-    /// <param name="backupPath">The relative backup path.</param>
-    /// <param name="type">The target type.</param>
+    /// <param name="source">The source path, or <see langword="null"/> to use a valid default path.</param>    /// <param name="type">The target type.</param>
     /// <returns>A configured target path.</returns>
     private TargetPath CreateValidTarget(
         string id = "saves",
         string? source = null,
-        string backupPath = "saves",
         TargetPathType type = TargetPathType.Directory
     )
     {
@@ -493,8 +448,7 @@ public sealed class InstanceConfigValidatorTests
             Enabled = true,
             AllowClear = true,
             Source = source ?? Path.Combine(_testRootPath, "Source Data"),
-            Type = type,
-            BackupPath = backupPath
+            Type = type
         };
     }
 

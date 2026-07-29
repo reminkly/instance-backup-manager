@@ -451,7 +451,7 @@ public sealed class RestoreProcessorTests
 
         var instance = CreateInstanceContext(target);
         var manifest = CreateBackup(instance, FirstBackupTime);
-        var payloadPath = Path.Combine(_backupsPath, manifest.BackupName, "data");
+        var payloadPath = Path.Combine(_backupsPath, manifest.BackupName, "targets", "data");
 
         Directory.Delete(payloadPath, recursive: true);
 
@@ -613,8 +613,7 @@ public sealed class RestoreProcessorTests
             Required = required,
             AllowClear = false,
             Source = source,
-            Type = type,
-            BackupPath = backupPath
+            Type = type
         };
     }
 

@@ -57,13 +57,5 @@ public sealed class TargetPath
     /// </summary>
     public TargetPathType Type { get; init; } = TargetPathType.Unknown;
 
-    /// <summary>
-    /// Gets the relative destination used to store the target inside each timestamped backup directory.
-    /// </summary>
-    /// <remarks>
-    /// The value must be relative and must not escape the backup directory through parent traversal.
-    /// </remarks>
-    public required string BackupPath { get; init; }
-
     #endregion
 }

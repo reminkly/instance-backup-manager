@@ -3,6 +3,7 @@ using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Constants;
+using InstanceBackupManager.Processing.Exceptions;
 using InstanceBackupManager.Processing.Models.Instances;
 using SystemConsole = System.Console;
 
@@ -21,6 +22,11 @@ internal sealed class ConsoleApplication
     private ConfigProcessor ConfigProcessor { get; }
 
     /// <summary>
+    /// Gets the workflow used to explain unsupported configuration schemas.
+    /// </summary>
+    private ConfigurationUpdateWorkflow ConfigurationUpdateWorkflow { get; }
+
+    /// <summary>
     /// Gets the workflow used to create a new instance and skeleton configuration.
     /// </summary>
     private InstanceCreationWorkflow InstanceCreationWorkflow { get; }
@@ -30,6 +36,11 @@ internal sealed class ConsoleApplication
     /// </summary>
     private InstanceMenu InstanceMenu { get; }
 
+    /// <summary>
+    /// Gets the workflow used for startup and explicit GitHub release checks.
+    /// </summary>
+    private UpdateWorkflow UpdateWorkflow { get; }
+
     #endregion
 
     #region Constructors
@@ -38,24 +49,32 @@ internal sealed class ConsoleApplication
     /// Initializes a new console application.
     /// </summary>
     /// <param name="configProcessor">The processor used to manage instance configurations.</param>
+    /// <param name="configurationUpdateWorkflow">The workflow used for out-of-date configurations.</param>
     /// <param name="instanceCreationWorkflow">The workflow used to create new instances.</param>
     /// <param name="instanceMenu">The menu displayed for a loaded instance.</param>
+    /// <param name="updateWorkflow">The workflow used to check for published updates.</param>
     /// <exception cref="ArgumentNullException">
     /// Thrown when a required dependency is null.
     /// </exception>
     internal ConsoleApplication(
         ConfigProcessor configProcessor,
+        ConfigurationUpdateWorkflow configurationUpdateWorkflow,
         InstanceCreationWorkflow instanceCreationWorkflow,
-        InstanceMenu instanceMenu
+        InstanceMenu instanceMenu,
+        UpdateWorkflow updateWorkflow
     )
     {
         ArgumentNullException.ThrowIfNull(configProcessor);
+        ArgumentNullException.ThrowIfNull(configurationUpdateWorkflow);
         ArgumentNullException.ThrowIfNull(instanceCreationWorkflow);
         ArgumentNullException.ThrowIfNull(instanceMenu);
+        ArgumentNullException.ThrowIfNull(updateWorkflow);
 
         ConfigProcessor = configProcessor;
+        ConfigurationUpdateWorkflow = configurationUpdateWorkflow;
         InstanceCreationWorkflow = instanceCreationWorkflow;
         InstanceMenu = instanceMenu;
+        UpdateWorkflow = updateWorkflow;
     }
 
     #endregion
@@ -63,13 +82,15 @@ internal sealed class ConsoleApplication
     #region Internal Methods
 
     /// <summary>
-    /// Starts the interactive application workflow and continues displaying instance selection until the user exits.
+    /// Performs the startup update check, then continues displaying instance selection until the user exits.
     /// </summary>
     /// <returns>Zero when the application exits normally; otherwise, one.</returns>
-    internal int Run()
+    internal async Task<int> RunAsync()
     {
         try
         {
+            await UpdateWorkflow.CheckAtStartupAsync();
+
             var applicationPath = AppContext.BaseDirectory;
             var instancesPath = Path.Combine(
                 applicationPath,
@@ -89,7 +110,10 @@ internal sealed class ConsoleApplication
                     return 0;
                 }
 
-                if (selection.Value is null)
+                var selectedAction = selection.Value
+                    ?? throw new InvalidOperationException("The application menu returned no selection.");
+
+                if (selectedAction.Action == ApplicationMenuAction.CreateInstance)
                 {
                     var creationOutcome = InstanceCreationWorkflow.Run(instancesPath);
 
@@ -101,7 +125,14 @@ internal sealed class ConsoleApplication
                     continue;
                 }
 
-                var selectedInstance = selection.Value;
+                if (selectedAction.Action == ApplicationMenuAction.CheckForUpdates)
+                {
+                    await UpdateWorkflow.RunAsync();
+                    continue;
+                }
+
+                var selectedInstance = selectedAction.Instance
+                    ?? throw new InvalidOperationException("The selected action does not identify an instance.");
 
                 if (!selectedInstance.HasConfiguration)
                 {
@@ -111,7 +142,27 @@ internal sealed class ConsoleApplication
                     continue;
                 }
 
-                var instance = ConfigProcessor.LoadInstance(selectedInstance.InstancePath);
+                InstanceContext instance;
+
+                try
+                {
+                    instance = ConfigProcessor.LoadInstance(selectedInstance.InstancePath);
+                }
+                catch (UnsupportedInstanceConfigurationSchemaException exception)
+                {
+                    var updateOutcome = ConfigurationUpdateWorkflow.Run(
+                        selectedInstance.Name,
+                        exception
+                    );
+
+                    if (updateOutcome == ConfigurationUpdateWorkflowOutcome.ExitApplication)
+                    {
+                        return 0;
+                    }
+
+                    continue;
+                }
+
                 var result = InstanceMenu.Run(instance);
 
                 if (result != 0)
@@ -141,7 +192,7 @@ internal sealed class ConsoleApplication
     /// </summary>
     /// <param name="instances">The discovered instances available for selection.</param>
     /// <returns>The selected instance, creation request, or cancellation result.</returns>
-    private static ConsoleMenuResult<InstanceDescriptor?> PromptForInstance(IReadOnlyList<InstanceDescriptor> instances)
+    private static ConsoleMenuResult<ApplicationMenuSelection?> PromptForInstance(IReadOnlyList<InstanceDescriptor> instances)
     {
         return InstanceSelectionMenu.Select(instances);
     }
