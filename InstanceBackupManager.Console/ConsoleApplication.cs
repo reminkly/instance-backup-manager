@@ -1,4 +1,5 @@
 using InstanceBackupManager.Console.Menus;
+using InstanceBackupManager.Console.Workflows;
 using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Constants;
@@ -20,6 +21,11 @@ internal sealed class ConsoleApplication
     private ConfigProcessor ConfigProcessor { get; }
 
     /// <summary>
+    /// Gets the workflow used to create a new instance and skeleton configuration.
+    /// </summary>
+    private InstanceCreationWorkflow InstanceCreationWorkflow { get; }
+
+    /// <summary>
     /// Gets the menu displayed after a configured instance is loaded.
     /// </summary>
     private InstanceMenu InstanceMenu { get; }
@@ -32,19 +38,23 @@ internal sealed class ConsoleApplication
     /// Initializes a new console application.
     /// </summary>
     /// <param name="configProcessor">The processor used to manage instance configurations.</param>
+    /// <param name="instanceCreationWorkflow">The workflow used to create new instances.</param>
     /// <param name="instanceMenu">The menu displayed for a loaded instance.</param>
     /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="configProcessor"/> or <paramref name="instanceMenu"/> is null.
+    /// Thrown when a required dependency is null.
     /// </exception>
     internal ConsoleApplication(
         ConfigProcessor configProcessor,
+        InstanceCreationWorkflow instanceCreationWorkflow,
         InstanceMenu instanceMenu
     )
     {
         ArgumentNullException.ThrowIfNull(configProcessor);
+        ArgumentNullException.ThrowIfNull(instanceCreationWorkflow);
         ArgumentNullException.ThrowIfNull(instanceMenu);
 
         ConfigProcessor = configProcessor;
+        InstanceCreationWorkflow = instanceCreationWorkflow;
         InstanceMenu = instanceMenu;
     }
 
@@ -72,20 +82,26 @@ internal sealed class ConsoleApplication
                     .DiscoverInstances(instancesPath)
                     .ToList();
 
-                if (discoveredInstances.Count == 0)
-                {
-                    ShowNoInstancesMessage(instancesPath);
-                    ConsoleHelper.WaitForExit();
+                var selection = PromptForInstance(discoveredInstances);
 
-                    return 0;
-                }
-
-                var selectedInstance = PromptForInstance(discoveredInstances);
-
-                if (selectedInstance is null)
+                if (selection.IsCancelled)
                 {
                     return 0;
                 }
+
+                if (selection.Value is null)
+                {
+                    var creationOutcome = InstanceCreationWorkflow.Run(instancesPath);
+
+                    if (creationOutcome == InstanceCreationWorkflowOutcome.Created)
+                    {
+                        return 0;
+                    }
+
+                    continue;
+                }
+
+                var selectedInstance = selection.Value;
 
                 if (!selectedInstance.HasConfiguration)
                 {
@@ -124,8 +140,8 @@ internal sealed class ConsoleApplication
     /// Displays discovered instances and prompts the user to select one.
     /// </summary>
     /// <param name="instances">The discovered instances available for selection.</param>
-    /// <returns>The selected instance, or <see langword="null"/> when the user chooses to exit.</returns>
-    private static InstanceDescriptor? PromptForInstance(IReadOnlyList<InstanceDescriptor> instances)
+    /// <returns>The selected instance, creation request, or cancellation result.</returns>
+    private static ConsoleMenuResult<InstanceDescriptor?> PromptForInstance(IReadOnlyList<InstanceDescriptor> instances)
     {
         return InstanceSelectionMenu.Select(instances);
     }
@@ -158,27 +174,6 @@ internal sealed class ConsoleApplication
         SystemConsole.WriteLine();
         SystemConsole.WriteLine("Update the configuration file before continuing.");
         SystemConsole.WriteLine("After you return to instance selection, the instance directories and configurations will be rediscovered.");
-    }
-
-    #endregion
-
-    #region Messages
-
-    /// <summary>
-    /// Displays a message explaining how to create the first instance directory.
-    /// </summary>
-    /// <param name="instancesPath">The absolute path of the empty instances directory.</param>
-    private static void ShowNoInstancesMessage(string instancesPath)
-    {
-        SystemConsole.WriteLine("Instance Backup Manager");
-        SystemConsole.WriteLine("=======================");
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("No instance directories were found.");
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Create a subdirectory inside:");
-        SystemConsole.WriteLine(instancesPath);
-        SystemConsole.WriteLine();
-        SystemConsole.WriteLine("Then restart the application.");
     }
 
     #endregion

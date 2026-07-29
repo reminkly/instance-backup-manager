@@ -71,16 +71,13 @@ internal sealed class InstanceMenu
 
         while (true)
         {
-            var availableCommands = Commands
-                .Where(command => command.IsAvailable(instance))
-                .ToList();
-
-            var menuItems = availableCommands
+            var menuItems = Commands
                 .Select(
                     command => new ConsoleMenuItem<IInstanceCommand?>(
                         command.Selection,
                         command.Description,
-                        command
+                        command,
+                        IsEnabled: command.IsAvailable(instance)
                     )
                 )
                 .Append(

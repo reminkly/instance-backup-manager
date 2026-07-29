@@ -1,3 +1,4 @@
+using InstanceBackupManager.Console.Constants;
 using InstanceBackupManager.Processing.Models.Instances;
 
 namespace InstanceBackupManager.Console.Menus;
@@ -13,20 +14,14 @@ internal static class InstanceSelectionMenu
     /// Prompts the user to select a discovered instance.
     /// </summary>
     /// <param name="instances">The discovered instances available for selection.</param>
-    /// <returns>The selected instance, or <see langword="null"/> when the menu is cancelled.</returns>
-    internal static InstanceDescriptor? Select(
+    /// <returns>
+    /// A menu result containing the selected instance, a non-cancelled null value when creation is selected, or a cancelled result when Exit is selected.
+    /// </returns>
+    internal static ConsoleMenuResult<InstanceDescriptor?> Select(
         IReadOnlyList<InstanceDescriptor> instances
     )
     {
         ArgumentNullException.ThrowIfNull(instances);
-
-        if (instances.Count == 0)
-        {
-            throw new ArgumentException(
-                "At least one discovered instance must be supplied.",
-                nameof(instances)
-            );
-        }
 
         var items = instances
             .Select(
@@ -34,6 +29,13 @@ internal static class InstanceSelectionMenu
                     CreateShortcut(index),
                     $"{instance.Name} [{GetStatus(instance)}]",
                     instance
+                )
+            )
+            .Append(
+                new ConsoleMenuItem<InstanceDescriptor?>(
+                    "n",
+                    ConsoleMessages.CreateNewInstance,
+                    Value: null
                 )
             )
             .Append(
@@ -53,9 +55,7 @@ internal static class InstanceSelectionMenu
             "Select an instance:"
         );
 
-        return result.IsCancelled
-            ? null
-            : result.Value;
+        return result;
     }
 
     #endregion

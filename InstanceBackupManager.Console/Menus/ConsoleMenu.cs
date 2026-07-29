@@ -36,6 +36,14 @@ internal static class ConsoleMenu
 
         ValidateShortcuts(items);
 
+        if (!items.Any(item => item.IsEnabled))
+        {
+            throw new ArgumentException(
+                "At least one console menu item must be enabled.",
+                nameof(items)
+            );
+        }
+
         return SystemConsole.IsInputRedirected || SystemConsole.In is StringReader
             ? SelectUsingRedirectedInput(
                 title,
@@ -62,7 +70,7 @@ internal static class ConsoleMenu
         string? instructions
     )
     {
-        var selectedIndex = 0;
+        var selectedIndex = FindFirstEnabledIndex(items);
 
         while (true)
         {
@@ -78,23 +86,27 @@ internal static class ConsoleMenu
             switch (key.Key)
             {
                 case ConsoleKey.UpArrow:
-                    selectedIndex = selectedIndex == 0
-                        ? items.Count - 1
-                        : selectedIndex - 1;
+                    selectedIndex = FindNextEnabledIndex(
+                        items,
+                        selectedIndex,
+                        direction: -1
+                    );
                     break;
 
                 case ConsoleKey.DownArrow:
-                    selectedIndex = selectedIndex == items.Count - 1
-                        ? 0
-                        : selectedIndex + 1;
+                    selectedIndex = FindNextEnabledIndex(
+                        items,
+                        selectedIndex,
+                        direction: 1
+                    );
                     break;
 
                 case ConsoleKey.Home:
-                    selectedIndex = 0;
+                    selectedIndex = FindFirstEnabledIndex(items);
                     break;
 
                 case ConsoleKey.End:
-                    selectedIndex = items.Count - 1;
+                    selectedIndex = FindLastEnabledIndex(items);
                     break;
 
                 case ConsoleKey.Enter:
@@ -150,9 +162,14 @@ internal static class ConsoleMenu
                 ? string.Empty
                 : $"{item.Shortcut}. ";
 
+            var label = item.IsEnabled
+                ? item.Label
+                : $"{item.Label} [Unavailable]";
+
             WriteMenuLine(
-                $"{shortcut}{item.Label}",
-                isSelected: index == selectedIndex
+                $"{shortcut}{label}",
+                isSelected: index == selectedIndex,
+                isEnabled: item.IsEnabled
             );
         }
 
@@ -165,17 +182,33 @@ internal static class ConsoleMenu
     /// </summary>
     private static void WriteMenuLine(
         string text,
-        bool isSelected
+        bool isSelected,
+        bool isEnabled
     )
     {
+        var originalForeground = SystemConsole.ForegroundColor;
+        var originalBackground = SystemConsole.BackgroundColor;
+
+        if (!isEnabled)
+        {
+            try
+            {
+                SystemConsole.ForegroundColor = ConsoleColor.DarkGray;
+                SystemConsole.WriteLine($"  {text}");
+            }
+            finally
+            {
+                SystemConsole.ForegroundColor = originalForeground;
+            }
+
+            return;
+        }
+
         if (!isSelected)
         {
             SystemConsole.WriteLine($"  {text}");
             return;
         }
-
-        var originalForeground = SystemConsole.ForegroundColor;
-        var originalBackground = SystemConsole.BackgroundColor;
 
         try
         {
@@ -231,8 +264,12 @@ internal static class ConsoleMenu
                     ? "-"
                     : item.Shortcut;
 
+                var label = item.IsEnabled
+                    ? item.Label
+                    : $"{item.Label} [Unavailable]";
+
                 SystemConsole.WriteLine(
-                    $"{shortcut}. {item.Label}"
+                    $"{shortcut}. {label}"
                 );
             }
 
@@ -250,7 +287,8 @@ internal static class ConsoleMenu
             }
 
             var selectedItem = items.SingleOrDefault(
-                item => string.Equals(
+                item => item.IsEnabled
+                    && string.Equals(
                     item.Shortcut,
                     input.Trim(),
                     StringComparison.OrdinalIgnoreCase
@@ -288,7 +326,8 @@ internal static class ConsoleMenu
 
         for (var index = 0; index < items.Count; index++)
         {
-            if (string.Equals(
+            if (items[index].IsEnabled
+                && string.Equals(
                 items[index].Shortcut,
                 shortcut,
                 StringComparison.OrdinalIgnoreCase
@@ -299,6 +338,63 @@ internal static class ConsoleMenu
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Gets the index of the first enabled menu item.
+    /// </summary>
+    private static int FindFirstEnabledIndex<TValue>(IReadOnlyList<ConsoleMenuItem<TValue>> items)
+    {
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (items[index].IsEnabled)
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException("The menu does not contain an enabled item.");
+    }
+
+    /// <summary>
+    /// Gets the index of the last enabled menu item.
+    /// </summary>
+    private static int FindLastEnabledIndex<TValue>(IReadOnlyList<ConsoleMenuItem<TValue>> items)
+    {
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (items[index].IsEnabled)
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException("The menu does not contain an enabled item.");
+    }
+
+    /// <summary>
+    /// Finds the next enabled item in the supplied direction and wraps at either end of the menu.
+    /// </summary>
+    private static int FindNextEnabledIndex<TValue>(
+        IReadOnlyList<ConsoleMenuItem<TValue>> items,
+        int selectedIndex,
+        int direction
+    )
+    {
+        var candidateIndex = selectedIndex;
+
+        do
+        {
+            candidateIndex = (candidateIndex + direction + items.Count) % items.Count;
+
+            if (items[candidateIndex].IsEnabled)
+            {
+                return candidateIndex;
+            }
+        }
+        while (candidateIndex != selectedIndex);
+
+        return selectedIndex;
     }
 
     /// <summary>

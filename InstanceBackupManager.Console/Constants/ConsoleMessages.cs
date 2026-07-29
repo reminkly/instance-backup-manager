@@ -29,6 +29,20 @@ internal static class ConsoleMessages
 
     #endregion
 
+    #region Instance Creation
+
+    /// <summary>
+    /// Represents the instance-selection entry used to start the creation workflow.
+    /// </summary>
+    public const string CreateNewInstance = "Create a new instance";
+
+    /// <summary>
+    /// Represents the message displayed when instance creation is cancelled.
+    /// </summary>
+    public const string InstanceCreationCancelled = "Instance creation cancelled.";
+
+    #endregion
+
     #region Backup Messages
 
     /// <summary>

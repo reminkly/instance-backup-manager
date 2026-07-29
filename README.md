@@ -8,6 +8,7 @@ Each managed item is represented by an instance directory containing an `instanc
 
 - Portable, self-contained Windows application
 - Multiple independently configured instances
+- Guided creation of new instance directories and skeleton configurations
 - Individual file and complete-directory targets
 - Multiple targets per instance
 - Optional and required source paths
@@ -51,12 +52,16 @@ The `Instances` directory is created beside the executable. Each immediate subdi
 
 ## Creating an Instance
 
-1. Create a subdirectory inside the application’s `Instances` directory.
-2. Start Instance Backup Manager.
-3. Select the unconfigured instance.
-4. The application creates a skeleton `instance.json`.
-5. Update the configuration file.
-6. Return to instance selection and select the configured instance.
+1. Start Instance Backup Manager.
+2. Select **Create a new instance**. This option is available even when no instances exist.
+3. Enter the user-facing instance name.
+4. Accept the suggested filesystem-safe folder name or enter a different folder name.
+5. Review and confirm the name, folder, and destination path.
+6. The application displays the generated configuration path and exits. Update `instance.json` before restarting Instance Backup Manager.
+
+The display name and folder name are stored separately. Display names may use punctuation or Unicode, while folder names must follow Windows directory-name rules. The application rejects duplicates, traversal, invalid characters, reserved Windows device names, and destinations outside the portable `Instances` directory.
+
+You can still create an instance directory manually. Select an unconfigured directory from instance selection and the application will offer to create its skeleton configuration.
 
 A complete example is available at [`examples/instance.example.json`](examples/instance.example.json).
 
@@ -207,7 +212,7 @@ Interactive menus support:
 - Escape to return to the previous menu or cancel a choice
 - Displayed number or letter keys as immediate shortcuts
 
-The selected row uses colors derived from the current terminal theme. When console input is redirected for tests or automation, menus retain line-based shortcut input.
+The selected row uses colors derived from the current terminal theme. Commands that are not valid for the selected instance remain visible with an `[Unavailable]` label, use dimmed text, are skipped by keyboard navigation, and cannot be selected by shortcut. This preserves stable command numbers between instances. When console input is redirected for tests or automation, menus retain line-based shortcut input.
 
 Exact-name and `DELETE ALL` prompts remain typed confirmations because they protect destructive operations.
 
@@ -288,7 +293,8 @@ The implementation uses several focused design patterns:
 
 - **Command:** Instance-menu actions implement a common command contract, allowing the menu to display and dispatch available operations without depending directly on every workflow.
 - **Decorator:** Logging wraps instance commands without adding logging responsibilities to each command or workflow.
-- **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, and runtime-context creation.
+- **Facade:** `ConfigProcessor` provides one entry point for instance discovery, configuration serialization, validation, skeleton creation, and runtime-context creation.
+- **Application service:** `InstanceCreationProcessor` validates names and safely coordinates creation of new instance directories and skeleton configurations.
 - **Repository:** `BackupCatalog` owns discovery and validated loading of completed backups.
 - **Strategy:** File and directory targets use separate backup, restore, and clear algorithms selected by target type.
 - **Policy utilities:** `FileSystemSafety` centralizes path comparison, containment, overlap, and reparse-point rules. `BackupDisplayNamePolicy` centralizes backup-name generation, normalization, validation, and backward-compatible display.
@@ -318,7 +324,7 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-Tests cover configuration processing, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
+Tests cover configuration processing, instance creation and selection, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
 
 ## Development Workflow
 

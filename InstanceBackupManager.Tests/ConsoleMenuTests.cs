@@ -97,6 +97,63 @@ public sealed class ConsoleMenuTests
         );
     }
 
+    /// <summary>
+    /// Verifies that a disabled item's shortcut is ignored and its unavailable state is displayed.
+    /// </summary>
+    [TestMethod]
+    public void Select_WhenDisabledShortcutIsEntered_IgnoresShortcutAndDisplaysUnavailableState()
+    {
+        System.Console.SetIn(
+            new StringReader(
+                string.Join(
+                    Environment.NewLine,
+                    "1",
+                    "2"
+                ) + Environment.NewLine
+            )
+        );
+
+        var output = new StringWriter();
+        System.Console.SetOut(output);
+
+        var result = ConsoleMenu.Select(
+            "Test Menu",
+            [
+                new ConsoleMenuItem<string>(
+                    "1",
+                    "Disabled item",
+                    "disabled",
+                    IsEnabled: false
+                ),
+                new ConsoleMenuItem<string>("2", "Enabled item", "enabled")
+            ]
+        );
+
+        Assert.AreEqual("enabled", result.Value);
+        StringAssert.Contains(output.ToString(), "Disabled item [Unavailable]");
+    }
+
+    /// <summary>
+    /// Verifies that a menu containing no enabled choices is rejected instead of entering an input loop.
+    /// </summary>
+    [TestMethod]
+    public void Select_WhenEveryItemIsDisabled_ThrowsArgumentException()
+    {
+        Assert.ThrowsExactly<ArgumentException>(
+            () => ConsoleMenu.Select(
+                "Test Menu",
+                [
+                    new ConsoleMenuItem<string>(
+                        "1",
+                        "Disabled item",
+                        "disabled",
+                        IsEnabled: false
+                    )
+                ]
+            )
+        );
+    }
+
     #endregion
 
     #region Test Helpers
