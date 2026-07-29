@@ -164,12 +164,35 @@ public sealed class ConfigProcessor
 
         var fullInstancePath = Path.GetFullPath(instancePath);
 
+        CreateSkeletonConfig(
+            fullInstancePath,
+            Path.GetFileName(fullInstancePath)
+        );
+    }
+
+    /// <summary>
+    /// Creates a skeleton configuration using an explicit user-facing instance name without overwriting an existing file.
+    /// </summary>
+    /// <param name="instancePath">The instance directory in which the configuration will be created.</param>
+    /// <param name="instanceName">The user-facing name written to the skeleton configuration.</param>
+    public void CreateSkeletonConfig(
+        string instancePath,
+        string instanceName
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceName);
+
+        var fullInstancePath = Path.GetFullPath(instancePath);
+
         var configPath = Path.Combine(
             fullInstancePath,
             BackupStorageConstants.InstanceConfigurationFileName
         );
 
-        var config = CreateSkeletonConfiguration(fullInstancePath);
+        var config = CreateSkeletonConfiguration(
+            instanceName.Trim()
+        );
 
         InstanceConfigSerializer.Create(
             configPath,
@@ -211,14 +234,14 @@ public sealed class ConfigProcessor
     /// <summary>
     /// Creates the in-memory skeleton configuration written for a new instance.
     /// </summary>
-    /// <param name="instancePath">The normalized absolute instance-directory path.</param>
+    /// <param name="instanceName">The user-facing name written to the skeleton configuration.</param>
     /// <returns>A skeleton configuration containing an example disabled target.</returns>
-    private static InstanceConfig CreateSkeletonConfiguration(string instancePath)
+    private static InstanceConfig CreateSkeletonConfiguration(string instanceName)
     {
         return new InstanceConfig
         {
             SchemaVersion = BackupStorageConstants.SupportedInstanceConfigurationSchemaVersion,
-            Name = Path.GetFileName(instancePath),
+            Name = instanceName,
             Retention = new RetentionSettings
             {
                 ManualBackupsToKeep = null,

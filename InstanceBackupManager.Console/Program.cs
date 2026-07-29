@@ -95,9 +95,13 @@ internal static class Program
             .AsReadOnly();
 
         var instanceMenu = new InstanceMenu(loggedCommands);
+        var instanceCreationWorkflow = new InstanceCreationWorkflow(
+            new InstanceCreationProcessor(configProcessor)
+        );
 
         var application = new ConsoleApplication(
             configProcessor,
+            instanceCreationWorkflow,
             instanceMenu
         );
 

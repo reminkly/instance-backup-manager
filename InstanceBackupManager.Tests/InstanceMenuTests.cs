@@ -6,7 +6,7 @@ using InstanceBackupManager.Processing.Models.Instances;
 namespace InstanceBackupManager.Tests;
 
 /// <summary>
-/// Tests command registration, availability filtering, dispatch, and result handling in the configured-instance menu.
+/// Tests command registration, disabled-command display, dispatch, and result handling in the configured-instance menu.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -95,31 +95,27 @@ public sealed class InstanceMenuTests
     }
 
     /// <summary>
-    /// Verifies that unavailable commands are neither displayed nor executed.
+    /// Verifies that unavailable commands remain visible but cannot be selected or executed.
     /// </summary>
     [TestMethod]
-    public void Run_WhenCommandIsUnavailable_HidesAndDoesNotExecuteCommand()
+    public void Run_WhenCommandIsUnavailable_DisplaysDisabledCommandAndDoesNotExecute()
     {
         var command = new TestInstanceCommand(
             selection: "1",
-            description: "Hidden command",
+            description: "Unavailable command",
             isAvailable: false
         );
 
         var menu = new InstanceMenu([command]);
-        var output = SetConsoleInput("0");
+        var output = SetConsoleInput("1", "0");
 
         var result = menu.Run(CreateInstanceContext());
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(0, command.ExecutionCount);
-        Assert.IsFalse(
-            output
-                .ToString()
-                .Contains(
-                    "Hidden command",
-                    StringComparison.Ordinal
-                )
+        StringAssert.Contains(
+            output.ToString(),
+            "Unavailable command [Unavailable]"
         );
     }
 

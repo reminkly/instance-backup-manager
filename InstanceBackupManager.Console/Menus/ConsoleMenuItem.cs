@@ -8,9 +8,11 @@ namespace InstanceBackupManager.Console.Menus;
 /// <param name="Label">The user-facing item label.</param>
 /// <param name="Value">The value returned when the item is selected.</param>
 /// <param name="IsCancellation">Indicates that selecting the item cancels the menu.</param>
+/// <param name="IsEnabled">Indicates that the item can be highlighted and selected.</param>
 internal sealed record ConsoleMenuItem<TValue>(
     string? Shortcut,
     string Label,
     TValue Value,
-    bool IsCancellation = false
+    bool IsCancellation = false,
+    bool IsEnabled = true
 );
