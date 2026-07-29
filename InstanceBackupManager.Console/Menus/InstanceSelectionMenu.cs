@@ -4,20 +4,18 @@ using InstanceBackupManager.Processing.Models.Instances;
 namespace InstanceBackupManager.Console.Menus;
 
 /// <summary>
-/// Displays discovered instance directories through the reusable keyboard selector.
+/// Displays discovered instance directories and application-level actions through the reusable keyboard selector.
 /// </summary>
 internal static class InstanceSelectionMenu
 {
     #region Internal Methods
 
     /// <summary>
-    /// Prompts the user to select a discovered instance.
+    /// Prompts the user to open an instance, create an instance, check for updates, or exit.
     /// </summary>
     /// <param name="instances">The discovered instances available for selection.</param>
-    /// <returns>
-    /// A menu result containing the selected instance, a non-cancelled null value when creation is selected, or a cancelled result when Exit is selected.
-    /// </returns>
-    internal static ConsoleMenuResult<InstanceDescriptor?> Select(
+    /// <returns>The selected application-level action or a cancelled result when Exit is selected.</returns>
+    internal static ConsoleMenuResult<ApplicationMenuSelection?> Select(
         IReadOnlyList<InstanceDescriptor> instances
     )
     {
@@ -25,21 +23,31 @@ internal static class InstanceSelectionMenu
 
         var items = instances
             .Select(
-                (instance, index) => new ConsoleMenuItem<InstanceDescriptor?>(
+                (instance, index) => new ConsoleMenuItem<ApplicationMenuSelection?>(
                     CreateShortcut(index),
                     $"{instance.Name} [{GetStatus(instance)}]",
-                    instance
+                    new ApplicationMenuSelection(
+                        ApplicationMenuAction.OpenInstance,
+                        instance
+                    )
                 )
             )
             .Append(
-                new ConsoleMenuItem<InstanceDescriptor?>(
+                new ConsoleMenuItem<ApplicationMenuSelection?>(
                     "n",
                     ConsoleMessages.CreateNewInstance,
-                    Value: null
+                    new ApplicationMenuSelection(ApplicationMenuAction.CreateInstance)
                 )
             )
             .Append(
-                new ConsoleMenuItem<InstanceDescriptor?>(
+                new ConsoleMenuItem<ApplicationMenuSelection?>(
+                    "u",
+                    ConsoleMessages.CheckForUpdates,
+                    new ApplicationMenuSelection(ApplicationMenuAction.CheckForUpdates)
+                )
+            )
+            .Append(
+                new ConsoleMenuItem<ApplicationMenuSelection?>(
                     "0",
                     "Exit",
                     Value: null,
@@ -49,13 +57,11 @@ internal static class InstanceSelectionMenu
             .ToList()
             .AsReadOnly();
 
-        var result = ConsoleMenu.Select(
+        return ConsoleMenu.Select(
             "Instance Backup Manager",
             items,
-            "Select an instance:"
+            "Select an instance or application action:"
         );
-
-        return result;
     }
 
     #endregion

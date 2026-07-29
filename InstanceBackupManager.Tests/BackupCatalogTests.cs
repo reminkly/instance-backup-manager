@@ -452,11 +452,7 @@ public sealed class BackupCatalogTests
             Required = true,
             AllowClear = false,
             Source = sourcePath,
-            Type = TargetPathType.File,
-            BackupPath = Path.Combine(
-                "save",
-                "save.dat"
-            )
+            Type = TargetPathType.File
         };
     }
 

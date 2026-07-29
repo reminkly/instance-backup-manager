@@ -213,7 +213,7 @@ public sealed class ConfigProcessorTests
             configPath,
             """
             {
-              "schemaVersion": 1,
+              "schemaVersion": 2,
               "name": "",
               "enabled": true,
               "targets": []

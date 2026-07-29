@@ -596,8 +596,7 @@ public sealed class ClearProcessorTests
             Required = true,
             AllowClear = allowClear,
             Source = source,
-            Type = type,
-            BackupPath = id
+            Type = type
         };
     }
 

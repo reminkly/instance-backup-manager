@@ -1,7 +1,8 @@
 {
-  "SchemaVersion": 1,
+  "SchemaVersion": 2,
   "Name": "Example Emulator",
   "Enabled": true,
+  "BackupRoot": "backups",
   "Retention": {
     "ManualBackupsToKeep": 10,
     "PreRestoreBackupsToKeep": 5
@@ -14,8 +15,7 @@
       "Required": true,
       "AllowClear": true,
       "Source": "C:\\Path\\To\\Game.SaveRAM",
-      "Type": "file",
-      "BackupPath": "saves/Game.SaveRAM"
+      "Type": "file"
     },
     {
       "Id": "mods",
@@ -24,8 +24,7 @@
       "Required": false,
       "AllowClear": false,
       "Source": "C:\\Path\\To\\Mods",
-      "Type": "directory",
-      "BackupPath": "mods"
+      "Type": "directory"
     }
   ]
 }

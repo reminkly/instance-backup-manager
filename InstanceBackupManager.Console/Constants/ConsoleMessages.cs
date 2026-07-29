@@ -37,6 +37,11 @@ internal static class ConsoleMessages
     public const string CreateNewInstance = "Create a new instance";
 
     /// <summary>
+    /// Represents the application-menu entry used to perform an explicit release check.
+    /// </summary>
+    public const string CheckForUpdates = "Check for updates";
+
+    /// <summary>
     /// Represents the message displayed when instance creation is cancelled.
     /// </summary>
     public const string InstanceCreationCancelled = "Instance creation cancelled.";

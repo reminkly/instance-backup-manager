@@ -97,14 +97,6 @@ internal sealed class InstanceCreationWorkflow
             SystemConsole.WriteLine();
             SystemConsole.WriteLine("Update instance.json before restarting Instance Backup Manager.");
 
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Instance created successfully.");
-            SystemConsole.WriteLine($"Name:          {result.Name}");
-            SystemConsole.WriteLine($"Folder:        {result.FolderName}");
-            SystemConsole.WriteLine($"Configuration: {result.ConfigPath}");
-            SystemConsole.WriteLine();
-            SystemConsole.WriteLine("Update instance.json before restarting Instance Backup Manager.");
-
             Process.Start(
                 new ProcessStartInfo
                 {

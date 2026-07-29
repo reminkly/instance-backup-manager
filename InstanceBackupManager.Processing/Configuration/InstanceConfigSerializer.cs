@@ -52,13 +52,31 @@ internal sealed class InstanceConfigSerializer
             );
         }
 
-        var json = File.ReadAllText(configPath);
+        return Deserialize(
+            File.ReadAllText(configPath),
+            configPath
+        );
+    }
+
+    /// <summary>
+    /// Deserializes instance configuration JSON while retaining a source description for any validation error.
+    /// </summary>
+    /// <param name="json">The JSON to deserialize.</param>
+    /// <param name="sourceDescription">The source path or description included in error messages.</param>
+    /// <returns>The deserialized instance configuration.</returns>
+    internal InstanceConfig Deserialize(
+        string json,
+        string sourceDescription
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(json);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceDescription);
 
         return JsonSerializer.Deserialize<InstanceConfig>(
             json,
             JsonOptions
         ) ?? throw new InvalidDataException(
-            $"Configuration '{configPath}' contained no data."
+            $"Configuration '{sourceDescription}' contained no data."
         );
     }
 

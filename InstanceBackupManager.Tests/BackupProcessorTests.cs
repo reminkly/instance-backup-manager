@@ -92,17 +92,17 @@ public sealed class BackupProcessorTests
         var completedBackupPath = Path.Combine(_backupsPath, manifest.BackupName);
 
         Assert.IsTrue(Directory.Exists(completedBackupPath));
-        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "data", "save.dat")));
-        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "data", "Nested", "mod.txt")));
+        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "targets", "data", "save.dat")));
+        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "targets", "data", "Nested", "mod.txt")));
 
         Assert.AreEqual(
             "Save data",
-            File.ReadAllText(Path.Combine(completedBackupPath, "data", "save.dat"))
+            File.ReadAllText(Path.Combine(completedBackupPath, "targets", "data", "save.dat"))
         );
 
         Assert.AreEqual(
             "Mod data",
-            File.ReadAllText(Path.Combine(completedBackupPath, "data", "Nested", "mod.txt"))
+            File.ReadAllText(Path.Combine(completedBackupPath, "targets", "data", "Nested", "mod.txt"))
         );
     }
 
@@ -130,6 +130,7 @@ public sealed class BackupProcessorTests
         var backedUpEmptyDirectoryPath = Path.Combine(
             _backupsPath,
             manifest.BackupName,
+            "targets",
             "data",
             "Empty Directory"
         );
@@ -166,6 +167,7 @@ public sealed class BackupProcessorTests
         var backedUpFilePath = Path.Combine(
             _backupsPath,
             manifest.BackupName,
+            "targets",
             "settings",
             "settings.ini"
         );
@@ -218,8 +220,8 @@ public sealed class BackupProcessorTests
 
         Assert.HasCount(1, manifest.Entries);
         Assert.AreEqual("enabled", manifest.Entries.Single().TargetId);
-        Assert.IsTrue(Directory.Exists(Path.Combine(completedBackupPath, "enabled")));
-        Assert.IsFalse(Directory.Exists(Path.Combine(completedBackupPath, "disabled")));
+        Assert.IsTrue(Directory.Exists(Path.Combine(completedBackupPath, "targets", "enabled")));
+        Assert.IsFalse(Directory.Exists(Path.Combine(completedBackupPath, "targets", "disabled")));
     }
 
     /// <summary>
@@ -418,7 +420,7 @@ public sealed class BackupProcessorTests
 
         var instance = CreateInstanceContext(
             CreateTarget(
-                id: "unsafe",
+                id: Path.Combine("..", "..", "escaped"),
                 source: _sourcePath,
                 backupPath: Path.Combine("..", "escaped"),
                 type: TargetPathType.Directory
@@ -474,8 +476,8 @@ public sealed class BackupProcessorTests
 
         Assert.HasCount(1, manifest.Entries);
         Assert.AreEqual("save", manifest.Entries.Single().TargetId);
-        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "saves", "save.dat")));
-        Assert.IsFalse(File.Exists(Path.Combine(completedBackupPath, "saves", "optional.rtc")));
+        Assert.IsTrue(File.Exists(Path.Combine(completedBackupPath, "targets", "save", "save.dat")));
+        Assert.IsFalse(File.Exists(Path.Combine(completedBackupPath, "targets", "rtc", "optional.rtc")));
     }
 
     /// <summary>
@@ -730,8 +732,7 @@ public sealed class BackupProcessorTests
             Required = required,
             AllowClear = false,
             Source = source,
-            Type = type,
-            BackupPath = backupPath
+            Type = type
         };
     }
 

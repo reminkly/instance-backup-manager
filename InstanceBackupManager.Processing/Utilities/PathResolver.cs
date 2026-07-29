@@ -8,27 +8,32 @@ internal static class PathResolver
     #region Internal Methods
 
     /// <summary>
-    /// Expands environment variables and converts a configured source path into an absolute filesystem path.
+    /// Expands environment variables and converts a configured path into an absolute filesystem path.
     /// </summary>
-    /// <param name="source">The configured source path.</param>
-    /// <param name="instancePath">The absolute instance directory used as the base for relative source paths.</param>
-    /// <returns>The normalized absolute source path.</returns>
-    /// <remarks>
-    /// Relative source paths are interpreted relative to the instance directory containing <c>instance.json</c>.
-    /// </remarks>
+    internal static string ResolveConfiguredPath(
+        string configuredPath,
+        string instancePath
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configuredPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
+
+        var expandedPath = Environment.ExpandEnvironmentVariables(configuredPath);
+
+        return Path.IsPathRooted(expandedPath)
+            ? Path.GetFullPath(expandedPath)
+            : Path.GetFullPath(expandedPath, instancePath);
+    }
+
+    /// <summary>
+    /// Resolves a configured target source path relative to its containing instance directory.
+    /// </summary>
     internal static string ResolveSourcePath(
         string source,
         string instancePath
     )
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(source);
-        ArgumentException.ThrowIfNullOrWhiteSpace(instancePath);
-
-        var expandedSource = Environment.ExpandEnvironmentVariables(source);
-
-        return Path.IsPathRooted(expandedSource)
-            ? Path.GetFullPath(expandedSource)
-            : Path.GetFullPath(expandedSource, instancePath);
+        return ResolveConfiguredPath(source, instancePath);
     }
 
     #endregion

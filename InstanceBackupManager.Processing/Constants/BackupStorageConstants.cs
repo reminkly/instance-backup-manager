@@ -31,6 +31,11 @@ public static class BackupStorageConstants
     /// </summary>
     public const string BackupsDirectoryName = "backups";
 
+    /// <summary>
+    /// Gets the directory name containing target payloads inside a completed backup.
+    /// </summary>
+    public const string TargetsDirectoryName = "targets";
+
     #endregion
 
     #region Directory Prefixes
@@ -47,7 +52,7 @@ public static class BackupStorageConstants
     /// <summary>
     /// Gets the instance configuration schema version supported by this application.
     /// </summary>
-    public const int SupportedInstanceConfigurationSchemaVersion = 1;
+    public const int SupportedInstanceConfigurationSchemaVersion = 2;
 
     /// <summary>
     /// Gets the backup manifest schema version supported by this application.
