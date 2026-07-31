@@ -1,5 +1,5 @@
 {
-  "SchemaVersion": 2,
+  "SchemaVersion": 3,
   "Name": "Example Emulator",
   "Enabled": true,
   "BackupRoot": "backups",
@@ -15,7 +15,8 @@
       "Required": true,
       "AllowClear": true,
       "Source": "C:\\Path\\To\\Game.SaveRAM",
-      "Type": "file"
+      "Type": "file",
+      "StoredName": "example-game.SaveRAM"
     },
     {
       "Id": "mods",

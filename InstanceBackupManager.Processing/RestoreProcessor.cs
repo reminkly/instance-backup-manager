@@ -110,6 +110,26 @@ public sealed class RestoreProcessor
         string backupName
     )
     {
+        return RestoreBackup(
+            instance,
+            backupName,
+            targetIds: null
+        );
+    }
+
+    /// <summary>
+    /// Restores selected targets from a completed backup using destinations from the current instance configuration.
+    /// </summary>
+    /// <param name="instance">The instance receiving the restored data.</param>
+    /// <param name="backupName">The directory name of the backup to restore.</param>
+    /// <param name="targetIds">The target identifiers to restore, or <see langword="null"/> to restore every enabled target.</param>
+    /// <returns>A summary of the completed restore operation.</returns>
+    public RestoreResult RestoreBackup(
+        InstanceContext instance,
+        string backupName,
+        IReadOnlyCollection<string>? targetIds
+    )
+    {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentException.ThrowIfNullOrWhiteSpace(backupName);
 
@@ -129,10 +149,21 @@ public sealed class RestoreProcessor
          * Resolve and validate every strategy and payload before modifying any destination. This prevents a later invalid
          * target from leaving an earlier target partially restored.
          */
+        var selectedTargetIds = targetIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedTargetIds is { Count: 0 })
+        {
+            throw new ArgumentException(
+                "At least one target must be selected for restoration.",
+                nameof(targetIds)
+            );
+        }
+
         var restorePlan = CreateRestorePlan(
             instance,
             backup.Manifest,
-            backup.BackupPath
+            backup.BackupPath,
+            selectedTargetIds
         );
 
         if (restorePlan.Count == 0)
@@ -169,13 +200,20 @@ public sealed class RestoreProcessor
     private IReadOnlyCollection<RestorePlanEntry> CreateRestorePlan(
         InstanceContext instance,
         BackupManifest manifest,
-        string backupPath
+        string backupPath,
+        IReadOnlySet<string>? selectedTargetIds
     )
     {
         var planEntries = new List<RestorePlanEntry>();
 
         foreach (var manifestEntry in manifest.Entries)
         {
+            if (selectedTargetIds is not null
+                && !selectedTargetIds.Contains(manifestEntry.TargetId))
+            {
+                continue;
+            }
+
             var currentTarget = instance.Config.Targets.SingleOrDefault(
                 target => string.Equals(
                     target.Id,
@@ -240,6 +278,24 @@ public sealed class RestoreProcessor
                     DestinationPath: destinationPath
                 )
             );
+        }
+
+        if (selectedTargetIds is not null)
+        {
+            var plannedTargetIds = planEntries
+                .Select(entry => entry.CurrentTarget.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var missingTargetIds = selectedTargetIds
+                .Where(targetId => !plannedTargetIds.Contains(targetId))
+                .ToList();
+
+            if (missingTargetIds.Count > 0)
+            {
+                throw new InvalidDataException(
+                    "The following selected targets are not currently restorable: " + string.Join(", ", missingTargetIds)
+                );
+            }
         }
 
         return planEntries.AsReadOnly();

@@ -408,6 +408,7 @@ public sealed class ConfigProcessor
                     AllowClear = false,
                     Source = "replace-with-source-path",
                     Type = TargetPathType.File,
+                    StoredName = null
                 }
             ]
         };

@@ -361,8 +361,11 @@ internal sealed class BackupMaintenanceWorkflow
             : "files";
 
         var displayName = BackupDisplayNamePolicy.GetDisplayName(backup.Manifest);
+        var tags = backup.Manifest.Tags.Count == 0
+            ? string.Empty
+            : $" <{string.Join(", ", backup.Manifest.Tags)}>";
 
-        return $"{displayName} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+        return $"{displayName}{tags} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
                $"{fileCount} {fileLabel}, {totalBytes} bytes";
     }
 

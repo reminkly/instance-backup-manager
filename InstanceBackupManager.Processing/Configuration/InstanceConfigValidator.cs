@@ -198,12 +198,57 @@ internal sealed class InstanceConfigValidator
             errors.Add($"Target '{target.Id}' has an unsupported target type '{target.Type}'.");
         }
 
+        ValidateStoredName(
+            target,
+            errors
+        );
+
         ValidateSourcePath(
             target,
             instancePath,
             backupsPath,
             errors
         );
+    }
+
+    /// <summary>
+    /// Validates the optional payload filename configured for a file target.
+    /// </summary>
+    private static void ValidateStoredName(
+        TargetPath target,
+        ICollection<string> errors
+    )
+    {
+        if (string.IsNullOrWhiteSpace(target.StoredName))
+        {
+            return;
+        }
+
+        if (target.Type != TargetPathType.File)
+        {
+            errors.Add($"Target '{target.Id}' can only configure StoredName when its type is 'file'.");
+            return;
+        }
+
+        var storedName = target.StoredName;
+        var reservedBaseName = Path.GetFileNameWithoutExtension(storedName);
+        var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+
+        if (storedName is "." or ".."
+            || Path.IsPathRooted(storedName)
+            || !string.Equals(storedName, Path.GetFileName(storedName), StringComparison.Ordinal)
+            || storedName.EndsWith(' ')
+            || storedName.EndsWith('.')
+            || storedName.Any(character => Path.GetInvalidFileNameChars().Contains(character))
+            || reservedNames.Contains(reservedBaseName))
+        {
+            errors.Add($"Target '{target.Id}' has an invalid stored filename '{storedName}'. StoredName must be one safe filename without directory components.");
+        }
     }
 
     private static void ValidateSourcePath(

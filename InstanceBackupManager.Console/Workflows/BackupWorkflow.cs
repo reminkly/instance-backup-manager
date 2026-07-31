@@ -2,6 +2,7 @@ using InstanceBackupManager.Console.Utilities;
 using InstanceBackupManager.Processing;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Policies;
 using SystemConsole = System.Console;
 
 namespace InstanceBackupManager.Console.Workflows;
@@ -67,13 +68,21 @@ internal sealed class BackupWorkflow
 
             var requestedDisplayName = SystemConsole.ReadLine();
 
+            SystemConsole.Write("Backup notes (optional): ");
+            var requestedNotes = SystemConsole.ReadLine();
+
+            SystemConsole.Write("Tags (optional, comma-separated): ");
+            var requestedTags = ParseTags(SystemConsole.ReadLine());
+
             SystemConsole.WriteLine();
             SystemConsole.WriteLine("Creating backup...");
 
             var manifest = BackupProcessor.CreateBackup(
                 instance,
                 BackupKind.Manual,
-                requestedDisplayName
+                requestedDisplayName,
+                requestedNotes,
+                requestedTags
             );
 
             var backupPath = Path.Combine(instance.BackupsPath, manifest.BackupName);
@@ -87,6 +96,16 @@ internal sealed class BackupWorkflow
             SystemConsole.WriteLine($"Files:  {fileCount}");
             SystemConsole.WriteLine($"Bytes:  {totalBytes}");
             SystemConsole.WriteLine($"Path:   {backupPath}");
+
+            if (!string.IsNullOrWhiteSpace(manifest.Notes))
+            {
+                SystemConsole.WriteLine($"Notes:  {manifest.Notes}");
+            }
+
+            if (manifest.Tags.Count > 0)
+            {
+                SystemConsole.WriteLine($"Tags:   {string.Join(", ", manifest.Tags)}");
+            }
 
             ApplyRetention(
                 instance,
@@ -107,6 +126,20 @@ internal sealed class BackupWorkflow
 
             return 1;
         }
+    }
+
+    #endregion
+
+    #region Metadata
+
+    /// <summary>
+    /// Converts comma-separated console input into values that will be normalized by the metadata policy.
+    /// </summary>
+    private static IReadOnlyCollection<string> ParseTags(string? input)
+    {
+        return string.IsNullOrWhiteSpace(input)
+            ? Array.Empty<string>()
+            : input.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
     }
 
     #endregion

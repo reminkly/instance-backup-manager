@@ -28,6 +28,16 @@ public sealed class BackupManifest
     public string? DisplayName { get; init; }
 
     /// <summary>
+    /// Gets optional user-authored notes describing the backup.
+    /// </summary>
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// Gets the normalized tags assigned to the backup.
+    /// </summary>
+    public IReadOnlyCollection<string> Tags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Gets the directory name assigned to the backup.
     /// </summary>
     public required string BackupName { get; init; }

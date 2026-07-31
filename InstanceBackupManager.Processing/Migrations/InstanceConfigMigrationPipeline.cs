@@ -34,7 +34,8 @@ internal sealed class InstanceConfigMigrationPipeline
     internal InstanceConfigMigrationPipeline()
         : this(
             [
-                new Version1ToVersion2Migration()
+                new Version1ToVersion2Migration(),
+                new Version2ToVersion3Migration()
             ]
         )
     {
