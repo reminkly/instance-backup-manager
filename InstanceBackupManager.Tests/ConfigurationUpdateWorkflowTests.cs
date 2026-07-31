@@ -30,14 +30,14 @@ public sealed class ConfigurationUpdateWorkflowTests
                 new UnsupportedInstanceConfigurationSchemaException(
                     Path.Combine(@"C:\Instances", "Old Instance", "instance.json"),
                     configuredVersion: 1,
-                    supportedVersion: 2
+                    supportedVersion: 3
                 )
             );
 
             Assert.AreEqual(ConfigurationUpdateWorkflowOutcome.ReturnToInstances, outcome);
             StringAssert.Contains(output.ToString(), "Configuration Update Required");
             StringAssert.Contains(output.ToString(), "Current schema:    1");
-            StringAssert.Contains(output.ToString(), "Supported schema:  2");
+            StringAssert.Contains(output.ToString(), "Supported schema:  3");
         }
         finally
         {

@@ -52,7 +52,7 @@ public static class BackupStorageConstants
     /// <summary>
     /// Gets the instance configuration schema version supported by this application.
     /// </summary>
-    public const int SupportedInstanceConfigurationSchemaVersion = 2;
+    public const int SupportedInstanceConfigurationSchemaVersion = 3;
 
     /// <summary>
     /// Gets the backup manifest schema version supported by this application.

@@ -57,5 +57,14 @@ public sealed class TargetPath
     /// </summary>
     public TargetPathType Type { get; init; } = TargetPathType.Unknown;
 
+    /// <summary>
+    /// Gets the optional filename used to store a file target inside each new backup.
+    /// </summary>
+    /// <remarks>
+    /// This value only changes the stored payload filename. Restoration always writes to the current <see cref="Source"/>
+    /// path. Directory targets cannot configure a stored name.
+    /// </remarks>
+    public string? StoredName { get; init; }
+
     #endregion
 }

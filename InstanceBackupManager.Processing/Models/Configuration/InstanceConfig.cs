@@ -13,7 +13,7 @@ public sealed class InstanceConfig
     /// <remarks>
     /// The schema version allows future releases to detect, reject, or migrate older configuration formats.
     /// </remarks>
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
 
     /// <summary>
     /// Gets the user-facing name displayed for the instance.

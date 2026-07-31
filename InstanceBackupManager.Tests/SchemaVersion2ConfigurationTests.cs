@@ -65,7 +65,7 @@ public sealed class SchemaVersion2ConfigurationTests
         );
 
         Assert.AreEqual(1, exception.ConfiguredVersion);
-        Assert.AreEqual(2, exception.SupportedVersion);
+        Assert.AreEqual(3, exception.SupportedVersion);
         Assert.AreEqual(_configPath, exception.ConfigPath);
     }
 
@@ -78,7 +78,7 @@ public sealed class SchemaVersion2ConfigurationTests
         var externalRoot = Path.Combine(_testRootPath, "External Backups");
         var json = $$"""
         {
-          "SchemaVersion": 2,
+          "SchemaVersion": 3,
           "Name": "External Instance",
           "BackupRoot": "{{externalRoot.Replace('\\', '/')}}",
           "Targets": []
@@ -133,8 +133,8 @@ public sealed class SchemaVersion2ConfigurationTests
         var upgradedJson = File.ReadAllText(_configPath);
 
         Assert.AreEqual(1, result.PreviousVersion);
-        Assert.AreEqual(2, result.CurrentVersion);
-        Assert.AreEqual(2, upgradedConfig.SchemaVersion);
+        Assert.AreEqual(3, result.CurrentVersion);
+        Assert.AreEqual(3, upgradedConfig.SchemaVersion);
         Assert.AreEqual("backups", upgradedConfig.BackupRoot);
         Assert.AreEqual("Migrated Instance", upgradedConfig.Name);
         Assert.AreEqual(7, upgradedConfig.Retention?.ManualBackupsToKeep);
@@ -178,6 +178,43 @@ public sealed class SchemaVersion2ConfigurationTests
             Path.Combine(_instancePath, "instance.schema-v1.backup-2.json"),
             result.BackupPath
         );
+        Assert.IsTrue(File.Exists(result.BackupPath));
+    }
+
+    /// <summary>
+    /// Verifies that schema version 2 upgrades through the registered version-2-to-version-3 step without changing targets.
+    /// </summary>
+    [TestMethod]
+    public void UpgradeConfig_WhenSchemaVersionIsTwo_AdvancesToVersionThreeAndPreservesTargets()
+    {
+        File.WriteAllText(
+            _configPath,
+            """
+            {
+              "SchemaVersion": 2,
+              "Name": "Version Two Instance",
+              "BackupRoot": "backups",
+              "Targets": [
+                {
+                  "Id": "save",
+                  "Name": "Save",
+                  "Source": "game.sav",
+                  "Type": "file"
+                }
+              ]
+            }
+            """
+        );
+
+        var result = _processor.UpgradeConfig(_configPath);
+        var upgraded = _processor.LoadConfig(_configPath);
+
+        Assert.AreEqual(2, result.PreviousVersion);
+        Assert.AreEqual(3, result.CurrentVersion);
+        Assert.AreEqual(3, upgraded.SchemaVersion);
+        Assert.HasCount(1, upgraded.Targets);
+        Assert.AreEqual("save", upgraded.Targets.Single().Id);
+        Assert.IsNull(upgraded.Targets.Single().StoredName);
         Assert.IsTrue(File.Exists(result.BackupPath));
     }
 

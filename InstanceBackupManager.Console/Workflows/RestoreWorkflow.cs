@@ -6,6 +6,7 @@ using InstanceBackupManager.Processing.Catalogs;
 using InstanceBackupManager.Processing.Enums;
 using InstanceBackupManager.Processing.Models.Backups;
 using InstanceBackupManager.Processing.Models.Instances;
+using InstanceBackupManager.Processing.Models.Restore;
 using InstanceBackupManager.Processing.Policies;
 using SystemConsole = System.Console;
 
@@ -38,6 +39,11 @@ internal sealed class RestoreWorkflow
     /// </summary>
     private BackupRetentionProcessor BackupRetentionProcessor { get; }
 
+    /// <summary>
+    /// Gets the processor used to compare backup payloads with current destinations before restoration.
+    /// </summary>
+    private RestorePreviewProcessor RestorePreviewProcessor { get; }
+
     #endregion
 
     #region Constructors
@@ -66,6 +72,7 @@ internal sealed class RestoreWorkflow
         RestoreProcessor = restoreProcessor;
         BackupProcessor = backupProcessor;
         BackupRetentionProcessor = backupRetentionProcessor;
+        RestorePreviewProcessor = new RestorePreviewProcessor(backupCatalog);
     }
 
     #endregion
@@ -104,7 +111,32 @@ internal sealed class RestoreWorkflow
                 return 0;
             }
 
-            if (!ConfirmRestore(instance, selectedBackup))
+            var preview = RestorePreviewProcessor.CreatePreview(
+                instance,
+                selectedBackup.BackupName
+            );
+
+            var selectedTargetIds = PromptForRestoreTargets(preview);
+
+            if (selectedTargetIds is null)
+            {
+                ShowRestoreCancelledMessage();
+                return 0;
+            }
+
+            ShowRestorePreview(
+                selectedBackup,
+                preview,
+                selectedTargetIds
+            );
+
+            ConsoleHelper.WaitForContinue();
+
+            if (!ConfirmRestore(
+                instance,
+                selectedBackup,
+                selectedTargetIds
+            ))
             {
                 ShowRestoreCancelledMessage();
 
@@ -136,7 +168,8 @@ internal sealed class RestoreWorkflow
 
             var result = RestoreProcessor.RestoreBackup(
                 instance,
-                selectedBackup.BackupName
+                selectedBackup.BackupName,
+                selectedTargetIds
             );
 
             var fileCount = result.Entries.Sum(entry => entry.FileCount);
@@ -173,6 +206,158 @@ internal sealed class RestoreWorkflow
 
             return 1;
         }
+    }
+
+    #endregion
+
+    #region Target Selection and Preview
+
+    /// <summary>
+    /// Prompts the user to restore every available target or choose a subset.
+    /// </summary>
+    private static IReadOnlyCollection<string>? PromptForRestoreTargets(RestorePreview preview)
+    {
+        if (preview.Targets.Count == 1)
+        {
+            return preview.Targets
+                .Select(target => target.TargetId)
+                .ToList()
+                .AsReadOnly();
+        }
+
+        var scopeResult = ConsoleMenu.Select(
+            "Restore Scope",
+            new List<ConsoleMenuItem<RestoreScopeChoice>>
+            {
+                new("a", "Restore all available targets", RestoreScopeChoice.All),
+                new("s", "Select targets", RestoreScopeChoice.Select),
+                new("c", "Cancel restore", RestoreScopeChoice.Cancel, IsCancellation: true)
+            }.AsReadOnly()
+        );
+
+        if (scopeResult.IsCancelled || scopeResult.Value == RestoreScopeChoice.Cancel)
+        {
+            return null;
+        }
+
+        if (scopeResult.Value == RestoreScopeChoice.All)
+        {
+            return preview.Targets
+                .Select(target => target.TargetId)
+                .ToList()
+                .AsReadOnly();
+        }
+
+        return PromptForSelectedTargets(preview.Targets.ToList());
+    }
+
+    /// <summary>
+    /// Displays a toggle menu until the user accepts a nonempty target selection or cancels.
+    /// </summary>
+    private static IReadOnlyCollection<string>? PromptForSelectedTargets(
+        IReadOnlyList<RestoreTargetPreview> targets
+    )
+    {
+        const string continueValue = "__continue__";
+        var selectedTargetIds = targets
+            .Select(target => target.TargetId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            var items = targets
+                .Select(
+                    (target, index) => new ConsoleMenuItem<string?>(
+                        index < 9 ? (index + 1).ToString() : null,
+                        $"[{(selectedTargetIds.Contains(target.TargetId) ? 'x' : ' ')}] {target.TargetName}",
+                        target.TargetId
+                    )
+                )
+                .Append(
+                    new ConsoleMenuItem<string?>(
+                        "c",
+                        "Continue with selected targets",
+                        continueValue,
+                        IsEnabled: selectedTargetIds.Count > 0
+                    )
+                )
+                .Append(
+                    new ConsoleMenuItem<string?>(
+                        "0",
+                        "Cancel restore",
+                        Value: null,
+                        IsCancellation: true
+                    )
+                )
+                .ToList()
+                .AsReadOnly();
+
+            var result = ConsoleMenu.Select(
+                "Select Restore Targets",
+                items,
+                "Select a target to toggle it, then choose Continue."
+            );
+
+            if (result.IsCancelled || result.Value is null)
+            {
+                return null;
+            }
+
+            if (result.Value == continueValue)
+            {
+                return selectedTargetIds.ToList().AsReadOnly();
+            }
+
+            if (!selectedTargetIds.Remove(result.Value))
+            {
+                selectedTargetIds.Add(result.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Displays file-level changes for every target selected for restoration.
+    /// </summary>
+    private static void ShowRestorePreview(
+        BackupDescriptor backup,
+        RestorePreview preview,
+        IReadOnlyCollection<string> selectedTargetIds
+    )
+    {
+        var selectedIds = selectedTargetIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        SystemConsole.Clear();
+        SystemConsole.WriteLine("Restore Preview");
+        SystemConsole.WriteLine("===============");
+        SystemConsole.WriteLine();
+        SystemConsole.WriteLine($"Backup: {BackupDisplayNamePolicy.GetDisplayName(backup.Manifest)}");
+
+        if (!string.IsNullOrWhiteSpace(backup.Manifest.Notes))
+        {
+            SystemConsole.WriteLine($"Notes:  {backup.Manifest.Notes}");
+        }
+
+        if (backup.Manifest.Tags.Count > 0)
+        {
+            SystemConsole.WriteLine($"Tags:   {string.Join(", ", backup.Manifest.Tags)}");
+        }
+
+        foreach (var target in preview.Targets.Where(target => selectedIds.Contains(target.TargetId)))
+        {
+            SystemConsole.WriteLine();
+            SystemConsole.WriteLine(target.TargetName);
+            SystemConsole.WriteLine(new string('-', target.TargetName.Length));
+            SystemConsole.WriteLine($"Destination: {target.DestinationPath}");
+            SystemConsole.WriteLine($"Create: {target.CreateCount}, overwrite: {target.OverwriteCount}, unchanged: {target.UnchangedCount}, preserve: {target.PreserveCount}");
+
+            foreach (var file in target.Files)
+            {
+                SystemConsole.WriteLine($"[{file.ChangeKind}] {file.RelativePath}");
+            }
+        }
+
+        SystemConsole.WriteLine();
+        SystemConsole.WriteLine("Preserved files exist only at the destination and will remain unchanged.");
     }
 
     #endregion
@@ -229,7 +414,8 @@ internal sealed class RestoreWorkflow
     /// <returns><see langword="true"/> when the user confirms the restore; otherwise, <see langword="false"/>.</returns>
     private static bool ConfirmRestore(
         InstanceContext instance,
-        BackupDescriptor backup
+        BackupDescriptor backup,
+        IReadOnlyCollection<string> selectedTargetIds
     )
     {
         var details = new List<string>
@@ -240,7 +426,9 @@ internal sealed class RestoreWorkflow
             "Files not contained in the backup will remain unchanged."
         };
 
+        var selectedIds = selectedTargetIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var changedDestinations = backup.Manifest.Entries
+            .Where(entry => selectedIds.Contains(entry.TargetId))
             .Select(
                 manifestEntry => new
                 {
@@ -332,6 +520,17 @@ internal sealed class RestoreWorkflow
 
     #endregion
 
+    #region Private Types
+
+    private enum RestoreScopeChoice
+    {
+        All,
+        Select,
+        Cancel
+    }
+
+    #endregion
+
     #region Pre-Restore Backup
 
     /// <summary>
@@ -383,8 +582,11 @@ internal sealed class RestoreWorkflow
             : "files";
 
         var displayName = BackupDisplayNamePolicy.GetDisplayName(backup.Manifest);
+        var tags = backup.Manifest.Tags.Count == 0
+            ? string.Empty
+            : $" <{string.Join(", ", backup.Manifest.Tags)}>";
 
-        return $"{displayName} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
+        return $"{displayName}{tags} | {createdLocal:yyyy-MM-dd HH:mm:ss} [{GetBackupKindDisplayName(backup.Manifest.Kind)}] - " +
                $"{fileCount} {fileLabel}, {totalBytes} bytes";
     }
 

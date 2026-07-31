@@ -16,7 +16,10 @@ Each managed item is represented by an instance directory containing an `instanc
 - Optional and required source paths
 - Per-target enable and clear settings
 - Timestamped backups with optional user-facing names and manifests
+- Optional backup notes and case-insensitive tags
 - Restore using current configured destination paths
+- File-level restore previews showing creates, overwrites, unchanged files, and preserved destination-only files
+- Selective restoration of one or more targets
 - Optional pre-restore safety backups
 - Delete one or all completed backups
 - Independent retention limits for manual and pre-restore backups
@@ -70,7 +73,7 @@ A complete example is available at [`examples/instance.example.json`](examples/i
 
 ```json
 {
-  "SchemaVersion": 2,
+  "SchemaVersion": 3,
   "Name": "Example Emulator",
   "Enabled": true,
   "BackupRoot": "backups",
@@ -86,7 +89,8 @@ A complete example is available at [`examples/instance.example.json`](examples/i
       "Required": true,
       "AllowClear": true,
       "Source": "C:\\Path\\To\\Game.SaveRAM",
-      "Type": "file"
+      "Type": "file",
+      "StoredName": "example-game.SaveRAM"
     },
     {
       "Id": "mods",
@@ -109,7 +113,7 @@ Configuration property names are case-insensitive. JSON comments and trailing co
 
 | Property | Type | Description |
 |---|---|---|
-| `SchemaVersion` | Integer | Configuration schema version. The current supported version is `2`. |
+| `SchemaVersion` | Integer | Configuration schema version. The current supported version is `3`. |
 | `Name` | String | User-facing instance name shown by the application. |
 | `Enabled` | Boolean | Determines whether the instance can participate in operations. |
 | `BackupRoot` | String | Root directory containing this instance’s backup directories. Environment variables are expanded. Relative paths resolve from the instance directory; absolute paths allow external storage. |
@@ -138,21 +142,21 @@ Manual retention runs after a successful manual backup. Pre-restore retention ru
 | `AllowClear` | Boolean | Explicitly permits the target to participate in Clear operations. |
 | `Source` | String | Source file or directory. Environment variables are expanded. Relative paths are resolved from the instance directory. |
 | `Type` | String | Either `file` or `directory`. |
+| `StoredName` | String or `null` | Optional safe filename used for a file target inside new backups. It does not change the current restore destination. Directory targets cannot use it. |
 
-Target IDs must be unique. Each target is stored automatically beneath `targets/<target-id>` in a backup. A file target retains its original filename, while a directory target retains the complete relative structure of its contents, including empty directories.
+Target IDs must be unique. Each target is stored automatically beneath `targets/<target-id>` in a backup. A file target uses `StoredName` when configured and otherwise retains its original filename. A directory target retains the complete relative structure of its contents, including empty directories.
 
-## Updating Version 1 Configurations
+## Updating Older Configurations
 
-Configuration schema version 2 replaces each target’s manually configured `BackupPath` with an instance-level `BackupRoot`. When a version-1 instance is selected, the application displays the current and supported schema versions and offers to back up and upgrade the configuration.
+Configuration schema version 2 replaced each target’s manually configured `BackupPath` with an instance-level `BackupRoot`. Schema version 3 adds optional `StoredName` aliases for file targets. When an older instance is selected, the application displays the current and supported schema versions and offers to back up and upgrade the configuration.
 
 The upgrade:
 
-1. Preserves the original as `instance.schema-v1.backup.json`. A numeric suffix is added rather than overwriting an existing upgrade backup.
+1. Preserves the original as `instance.schema-v<version>.backup.json`. A numeric suffix is added rather than overwriting an existing upgrade backup.
 2. Runs every registered version-to-version migration needed to reach the current schema.
-3. Changes `SchemaVersion` from `1` to `2`.
-4. Adds `"BackupRoot": "backups"` at the instance level.
-5. Removes `BackupPath` from every target while preserving its other settings.
-6. Validates the migrated configuration before replacing the active file.
+3. For version 1, adds `"BackupRoot": "backups"` and removes each target’s obsolete `BackupPath`.
+4. Advances version 2 to version 3 without changing existing targets; `StoredName` remains optional.
+5. Validates the fully migrated configuration before replacing the active file.
 
 If transformation or validation fails, the active configuration remains unchanged. The user can also return to instance selection or reveal the configuration in Explorer without upgrading it.
 
@@ -170,15 +174,28 @@ Release information is read from the public GitHub Releases API for `reminkly/in
 
 ### Back up now
 
-Creates a timestamped backup beneath the configured `BackupRoot` containing every enabled target. The application prompts for an optional user-facing backup name. Leaving the name blank creates a timestamped name automatically.
+Creates a timestamped backup beneath the configured `BackupRoot` containing every enabled target. The application prompts for an optional user-facing backup name, notes, and comma-separated tags. Leaving the name blank creates a timestamped name automatically.
 
 Backup names are presentation metadata and do not change the timestamped directory used to store the backup. Names are trimmed, limited to 100 characters, and cannot contain line breaks or other control characters.
+
+Notes are trimmed and limited to 500 characters. A backup may have up to 10 tags; tags are trimmed, deduplicated without regard to case, and limited to 30 characters each. Tags appear in restore and backup-management lists, while notes are displayed in the restore preview.
 
 Required targets must exist. Missing optional targets are skipped and omitted from the manifest. After a successful manual backup, the configured manual retention limit is applied.
 
 ### Restore from backup
 
 Displays validated completed backups from newest to oldest. Each menu entry includes its user-facing name, creation time, backup kind, file count, and byte count. Manifests created before backup names were introduced receive a generated timestamped label.
+
+When a backup contains multiple currently enabled targets, the user can restore every target or toggle individual targets. Only the selected targets are included in the optional safety-backup decision and final restore operation.
+
+Before confirmation, the application compares the selected backup payload with each current destination and displays every file as:
+
+- `Create` — present in the backup but missing at the destination
+- `Overwrite` — present in both locations with different content
+- `Unchanged` — present in both locations with identical content
+- `Preserve` — present only at the destination and therefore left untouched by merge restore
+
+Preview comparison is non-mutating and performs byte-for-byte comparison when file sizes match.
 
 Restore uses the current `Source` path from `instance.json`. The historical source stored in the manifest is informational and does not override the current configuration.
 
@@ -274,6 +291,7 @@ Each completed backup contains a `manifest.json` describing:
 - Manifest schema version
 - Instance name at creation time
 - Optional user-facing backup name
+- Optional notes and normalized tags
 - Backup directory name
 - Backup kind
 - UTC creation time
@@ -350,7 +368,7 @@ Run the complete test suite:
 dotnet test .\instance-backup-manager.slnx
 ```
 
-Tests cover configuration processing, schema-update guidance, relative and external backup roots, instance creation and selection, GitHub release discovery and version comparison, backup discovery and maintenance, retention, backup display-name policies, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
+Tests cover configuration processing, schema-update guidance, relative and external backup roots, instance creation and selection, GitHub release discovery and version comparison, backup discovery and maintenance, retention, backup display-name and metadata policies, non-mutating restore comparison, selective target restoration, backup and restore behavior, clear safety, target strategies, filesystem safety, validation, command logging, console menus, and command dispatch.
 
 ## Development Workflow
 

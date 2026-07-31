@@ -100,7 +100,9 @@ public sealed class BackupProcessor
     public BackupManifest CreateBackup(
         InstanceContext instance,
         BackupKind kind = BackupKind.Manual,
-        string? displayName = null
+        string? displayName = null,
+        string? notes = null,
+        IEnumerable<string>? tags = null
     )
     {
         ArgumentNullException.ThrowIfNull(instance);
@@ -140,6 +142,9 @@ public sealed class BackupProcessor
             displayName,
             createdUtc
         );
+
+        var normalizedNotes = BackupMetadataPolicy.NormalizeNotes(notes);
+        var normalizedTags = BackupMetadataPolicy.NormalizeTags(tags);
 
         var backupName = CreateUniqueBackupName(
             instance.BackupsPath,
@@ -188,6 +193,8 @@ public sealed class BackupProcessor
                 SchemaVersion = BackupStorageConstants.SupportedManifestSchemaVersion,
                 InstanceName = instance.Config.Name,
                 DisplayName = normalizedDisplayName,
+                Notes = normalizedNotes,
+                Tags = normalizedTags,
                 BackupName = backupName,
                 Kind = kind,
                 CreatedUtc = createdUtc,
@@ -268,7 +275,9 @@ public sealed class BackupProcessor
         {
             payloadPath = Path.Combine(
                 payloadPath,
-                Path.GetFileName(sourcePath)
+                string.IsNullOrWhiteSpace(target.StoredName)
+                    ? Path.GetFileName(sourcePath)
+                    : target.StoredName
             );
         }
 

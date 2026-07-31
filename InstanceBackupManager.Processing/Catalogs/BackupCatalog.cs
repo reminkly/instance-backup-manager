@@ -273,6 +273,21 @@ public sealed class BackupCatalog
             }
         }
 
+        try
+        {
+            BackupMetadataPolicy.NormalizeNotes(manifest.Notes);
+            BackupMetadataPolicy.NormalizeTags(
+                manifest.Tags ?? throw new ArgumentException("The tag collection cannot be null.")
+            );
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException(
+                $"Backup '{backupName}' has invalid metadata: {exception.Message}",
+                exception
+            );
+        }
+
         if (!string.Equals(
             manifest.BackupName,
             backupName,
