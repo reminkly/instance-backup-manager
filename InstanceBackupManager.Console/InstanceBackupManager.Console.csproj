@@ -23,9 +23,9 @@
     <Company>Matt McNeely</Company>
     <Copyright>Copyright © 2026 Matt McNeely</Copyright>
 
-    <Version>0.6.0</Version>
-  <FileVersion>0.6.0.0</FileVersion>
-  <InformationalVersion>0.6.0</InformationalVersion>
+    <Version>0.7.0</Version>
+  <FileVersion>0.7.0.0</FileVersion>
+  <InformationalVersion>0.7.0</InformationalVersion>
   </PropertyGroup>
 
 </Project>
